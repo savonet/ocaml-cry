@@ -294,12 +294,14 @@ let parse_http_answer s =
 
 let connect_http c source = 
   let auth = get_auth source in 
-  let raise x = 
-    try
-      Unix.shutdown c.socket Unix.SHUTDOWN_ALL;
-      raise x
-    with
-      | _ -> raise x
+  let raise x =
+    begin 
+     try
+       Unix.shutdown c.socket Unix.SHUTDOWN_ALL;
+     with
+       | _ -> ()
+    end;
+    raise x
   in
   Hashtbl.add source.headers "Authorization" auth;
   Hashtbl.add 
@@ -329,6 +331,15 @@ let connect_icy c source =
   let headers = Hashtbl.fold f source.headers "" in
   let request = Printf.sprintf "%s\r\n%s\r\n" source.password headers in
   let len = String.length request in
+  let raise x =
+    begin
+     try
+       Unix.shutdown c.socket Unix.SHUTDOWN_ALL;
+     with
+       | _ -> ()
+    end;
+    raise x
+  in
   if Unix.write c.socket request 0 len < len then
     raise (Error Write);
   (** Read input from socket. *)
@@ -395,12 +406,14 @@ let update_metadata c m =
     raise (Error Invalid_usage);
   let socket = create_socket ~ipv6:c.ipv6 ?bind:c.bind () in
   let raise x =
-    try
-      Unix.shutdown socket Unix.SHUTDOWN_ALL;
-      Unix.close socket;
-      raise x
-    with
-      | _ -> raise x
+    begin
+     try
+       Unix.shutdown c.socket Unix.SHUTDOWN_ALL;
+       Unix.close socket
+     with
+       | _ -> ()
+    end;
+    raise x
   in
   connect_socket socket source.host source.port;
   let user_agent = 
