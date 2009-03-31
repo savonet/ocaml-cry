@@ -1,0 +1,6 @@
+name="cry"
+version="@VERSION@"
+description="OCaml bindings for cry"
+requires="@requires@ unix"
+archive(byte)="cry.cma"
+archive(native)="cry.cmxa"

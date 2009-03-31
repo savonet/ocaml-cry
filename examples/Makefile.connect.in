@@ -1,0 +1,8 @@
+SOURCES = connect.ml
+RESULT = connect
+INCDIRS = ../src
+LIBS = unix cry
+
+all: nc
+
+-include OCamlMakefile
