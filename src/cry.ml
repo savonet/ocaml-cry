@@ -444,7 +444,13 @@ let update_metadata c m =
   let ret = input_line in_c in
   let (v,code,s) = parse_http_answer ret in
   if code <> 200 then
-    raise (Error (Http_answer (code,s,v)))
+    raise (Error (Http_answer (code,s,v)));
+  try
+    Unix.shutdown socket Unix.SHUTDOWN_ALL;
+    Unix.close socket;
+  with
+    | _ -> raise (Error Close)
+
 
 let send c x = 
   let out_e = Unix.out_channel_of_descr c.socket in
