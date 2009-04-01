@@ -156,7 +156,7 @@ val audio_info :
   * ["ice-description"].
   *
   * The list of preset headers for [Icy] connections is:
-  * ["icy-name"], ["icy-url"], ["icy-pub"], 
+  * ["User-Agent"], ["icy-name"], ["icy-url"], ["icy-pub"], 
   * ["icy-genre"], ["icy-br"]. 
   *
   * Additionally, you can also add:

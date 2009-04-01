@@ -173,7 +173,8 @@ let connection
           "ice-audio-info", audio_info;
           "ice-description", description]
       | Icy -> 
-         ["icy-name", name;
+         ["User-Agent", user_agent;
+          "icy-name", name;
           "icy-url", url;
           "icy-pub", public;
           "icy-genre", genre;
@@ -245,21 +246,11 @@ let url_encode s =
    (** True if x is an acceptable char *)
    let range x = 
      (* 0-9 *)
-     (x <= 0x30 && x >= 0x39) ||
+     (x >= 0x30 && x <= 0x39) ||
      (* A-Z *)
-     (x <= 0x41 && x >= 0x5A) ||
+     (x >= 0x41 && x <= 0x5A) ||
      (* a-z *)
-     (x >= 0x61 && x <= 0x7a) ||
-     (* _ *)
-     x = 0x5f ||
-     (* . *)
-     x = 0x2e ||
-     (* ! *)
-     x = 0x21 ||
-     (* * *)
-     x = 0x2a ||
-     (* - *)
-     x = 0x2d
+     (x >= 0x61 && x <= 0x7a)
    in
    match String.length s with
      | 0 -> s'
@@ -281,17 +272,37 @@ let http_header =
 let get_auth source = 
   Printf.sprintf "Basic %s" (encode64 (source.user ^ ":" ^ source.password))
 
-let write_data socket request raise = 
+let write_data socket request raise =
   let len = String.length request in
-  if Unix.write socket request 0 len < len then
-    raise (Error Write)
-
-let read_data socket raise =
-  let in_c = Unix.in_channel_of_descr socket in  
   try
-    input_line in_c
+   if Unix.write socket request 0 len < len then
+    raise (Error Write)
   with
-     | End_of_file -> raise (Error Read)
+    | _ -> raise (Error Write)
+
+let buf = String.create 1024
+
+(** Read and split data. *)
+let read_data socket raise =
+  try
+     let ret = Unix.read socket buf 0 1024 in
+     (* split data *)
+     let buf = String.sub buf 0 ret in
+     let rec f pos l = 
+       try
+         let x = String.index_from buf pos '\n' in
+         f (pos+x+1) (String.sub buf pos (pos+x)::l)
+       with
+         | Invalid_argument _ 
+         | Not_found -> 
+             if pos < ret then 
+               String.sub buf pos (ret-pos) :: l 
+             else 
+               l
+     in
+     List.rev (f 0 [])
+  with
+     | e -> raise e (*raise (Error Read)*) 
 
 let parse_http_answer s = 
   let f v c s =
@@ -325,7 +336,7 @@ let connect_http c source =
   write_data c.socket request raise;
   (** Read input from socket. *)
   let ret = read_data c.socket raise in 
-  let (v,code,s) = parse_http_answer ret in
+  let (v,code,s) = parse_http_answer (List.hd ret) in
   if code < 200 || code >= 300 then
     raise (Error (Http_answer (code,s,v)));
   c.icy_cap <- true; 
@@ -355,13 +366,17 @@ let connect_icy c source =
   in
   begin
    try
-     Scanf.sscanf ret "%[^\r^\n]" f
+     Scanf.sscanf (List.hd ret) "%[^\r^\n]" f
    with
      | Scanf.Scan_failure s -> raise (Error (Bad_answer s))
   end;
   (* Read another line *)
-  let ret = read_data c.socket raise in
-  let f s = 
+  let ret = 
+    match ret with
+      | x :: y :: _ -> y
+      | _ -> List.hd (read_data c.socket raise)
+  in
+  let f s =
     c.icy_cap <- true
   in
   begin
@@ -418,7 +433,10 @@ let update_metadata c m =
     end;
     raise x
   in
-  connect_socket socket source.host source.port;
+  let port =
+    if source.protocol = Icy then source.port+1 else source.port
+  in
+  connect_socket socket source.host port;
   let user_agent = 
     try
       Printf.sprintf "User-Agent: %s\r\n"
@@ -442,7 +460,7 @@ let update_metadata c m =
   write_data socket request raise;
   (** Read input from socket. *)
   let ret = read_data socket raise in
-  let (v,code,s) = parse_http_answer ret in
+  let (v,code,s) = parse_http_answer (List.hd ret) in
   if code <> 200 then
     raise (Error (Http_answer (code,s,v)));
   try
