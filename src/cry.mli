@@ -49,7 +49,7 @@ exception Error of error
 (** Get a string explaining an error. *)
 val string_of_error : error -> string
 
-(** Possible protocols. [Icy] is the (undocumented) shoutcas source protocol.
+(** Possible protocols. [Icy] is the (undocumented) shoutcast source protocol.
   * [Http] is the icecast2 source protocol. 
   * 
   * Ogg streaming is only possible with [Http]. Any headerless format,
