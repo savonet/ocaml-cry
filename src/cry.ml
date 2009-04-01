@@ -21,9 +21,10 @@
  (** OCaml low level implementation of the shout source protocol. *)
 
 type error = 
-  | Connection
+  | Connect
   | Close
   | Write
+  | Read
   | Busy
   | Not_connected
   | Invalid_usage 
@@ -34,16 +35,17 @@ exception Error of error
 
 let string_of_error e = 
   match e with
-    | Connection -> "could not connect to host"
+    | Connect -> "could not connect to host"
     | Write -> "could not write data to host"
+    | Read -> "could not read data from host"
     | Close -> "could not close connection"
     | Busy -> "busy"
     | Not_connected -> "not connected"
     | Invalid_usage -> "invalid usage"
     | Bad_answer s -> Printf.sprintf "bad answer: %s" s
     | Http_answer (c,x,v) -> 
-       Printf.sprintf "HTTP/%s, code: %i, reason: %s" 
-                      v c x
+       Printf.sprintf "%i, %s (HTTP/%s)" 
+                      c x v
 
 type protocol = Icy | Http
 
@@ -65,7 +67,6 @@ type connection =
     port         : int;
     content_type : content_type;
     protocol     : protocol;
-    icy          : bool;
     headers      : (string,string) Hashtbl.t
   }
 
@@ -111,6 +112,7 @@ let create ?(ipv6=false) ?timeout ?bind () =
 
 let get_status c = c.status
 let get_icy_cap c = c.icy_cap 
+let get_socket c = c.socket
 
 let audio_info 
   ?(samplerate) ?(channels) ?(quality) ?(bitrate) () = 
@@ -132,7 +134,7 @@ let connection
     ?(description) ?(host="localhost") 
     ?(port=8000) ?(password="hackme")
     ?(protocol=Http) ?(user="source")
-    ?(icy=false) ~mount ~content_type () =
+    ~mount ~content_type () =
   let headers = Hashtbl.create 10 in
   let public = 
     match public with
@@ -173,9 +175,6 @@ let connection
       | Icy -> 
          ["icy-name", name;
           "icy-url", url;
-          "icy-irc", None;
-          "icy-aim", None;
-          "icy-icq", None;
           "icy-pub", public;
           "icy-genre", genre;
           "icy-br", match audio_info with
@@ -197,7 +196,6 @@ let connection
     mount = mount;
     content_type  = content_type;
     protocol = protocol;
-    icy = icy;
     headers = headers
   }
 
@@ -283,6 +281,18 @@ let http_header =
 let get_auth source = 
   Printf.sprintf "Basic %s" (encode64 (source.user ^ ":" ^ source.password))
 
+let write_data socket request raise = 
+  let len = String.length request in
+  if Unix.write socket request 0 len < len then
+    raise (Error Write)
+
+let read_data socket raise =
+  let in_c = Unix.in_channel_of_descr socket in  
+  try
+    input_line in_c
+  with
+     | End_of_file -> raise (Error Read)
+
 let parse_http_answer s = 
   let f v c s =
     (v,c,s)
@@ -312,16 +322,13 @@ let connect_http c source =
   in
   let headers = Hashtbl.fold f source.headers "" in
   let request = http_header source.mount headers in
-  let len = String.length request in
-  if Unix.write c.socket request 0 len < len then
-    raise (Error Write);
+  write_data c.socket request raise;
   (** Read input from socket. *)
-  let in_c = Unix.in_channel_of_descr c.socket in
-  let ret = input_line in_c in
+  let ret = read_data c.socket raise in 
   let (v,code,s) = parse_http_answer ret in
-  if code <> 200 then
+  if code < 200 || code >= 300 then
     raise (Error (Http_answer (code,s,v)));
-  c.icy_cap <- source.icy; 
+  c.icy_cap <- true; 
   c.status <- Connected source 
 
 let connect_icy c source = 
@@ -330,7 +337,6 @@ let connect_icy c source =
   in
   let headers = Hashtbl.fold f source.headers "" in
   let request = Printf.sprintf "%s\r\n%s\r\n" source.password headers in
-  let len = String.length request in
   let raise x =
     begin
      try
@@ -340,11 +346,9 @@ let connect_icy c source =
     end;
     raise x
   in
-  if Unix.write c.socket request 0 len < len then
-    raise (Error Write);
+  write_data c.socket request raise;
   (** Read input from socket. *)
-  let in_c = Unix.in_channel_of_descr c.socket in
-  let ret = input_line in_c in
+  let ret = read_data c.socket raise in
   let f s =
     if s.[0] <> 'O' && s.[1] <> 'K' then
       raise (Error (Bad_answer s));
@@ -356,17 +360,16 @@ let connect_icy c source =
      | Scanf.Scan_failure s -> raise (Error (Bad_answer s))
   end;
   (* Read another line *)
-  let ret = input_line in_c in
+  let ret = read_data c.socket raise in
   let f s = 
     c.icy_cap <- true
   in
-  if source.icy then
-   begin
-    try
-      Scanf.sscanf ret "icy-caps:%[1]" f
-    with
-      | Scanf.Scan_failure s -> ()
-   end;
+  begin
+   try
+     Scanf.sscanf ret "icy-caps:%[1]" f
+   with
+     | Scanf.Scan_failure s -> ()
+  end;
   c.status <- Connected source
 
 let connect_socket socket host port = 
@@ -375,7 +378,7 @@ let connect_socket socket host port =
       socket
       (Unix.ADDR_INET((Unix.gethostbyname host).Unix.h_addr_list.(0),port))
   with
-    | _ -> raise (Error Connection)
+    | _ -> raise (Error Connect)
  
 let connect c source =
   if c.status <> Disconnected then
@@ -436,12 +439,9 @@ let update_metadata c m =
           http_meta_request source.mount meta headers
       | Icy -> icy_meta_request source.password meta user_agent
   in
-  let len = String.length request in
-  if Unix.write socket request 0 len < len then
-    raise (Error Write);
+  write_data socket request raise;
   (** Read input from socket. *)
-  let in_c = Unix.in_channel_of_descr socket in
-  let ret = input_line in_c in
+  let ret = read_data socket raise in
   let (v,code,s) = parse_http_answer ret in
   if code <> 200 then
     raise (Error (Http_answer (code,s,v)));
@@ -450,7 +450,6 @@ let update_metadata c m =
     Unix.close socket;
   with
     | _ -> raise (Error Close)
-
 
 let send c x = 
   let out_e = Unix.out_channel_of_descr c.socket in
@@ -465,4 +464,3 @@ let close x =
     with
       | _ -> raise (Error Close)
  
-   

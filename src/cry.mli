@@ -18,12 +18,26 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *)
 
- (** OCaml low level implementation of the shout source protocol. *)
+ (** Native implementation of the shout source protocols for icecast and shoutcast. *)
 
+ (** {2 Description} 
+   *
+   * [Cry] implements the protocols used to connect and send source data to 
+   * icecast2 and shoutcast servers. 
+   *
+   * It is a low-level implementation, so it only does the minimal source connection.
+   * In particular, it does not handle synchronisation. Hence, the task of sending
+   * audio data to the streaming server at real time rate is up to the programmer, 
+   * contrary to the main implementation, libshout. *)
+
+ (** {2 Types and errors} *)
+
+(** Possible errors. *)
 type error = 
-  | Connection 
+  | Connect
   | Close
   | Write
+  | Read
   | Busy 
   | Not_connected
   | Invalid_usage
@@ -32,18 +46,42 @@ type error =
 
 exception Error of error
 
+(** Get a string explaining an error. *)
 val string_of_error : error -> string
 
+(** Possible protocols. [Icy] is the (undocumented) shoutcas source protocol.
+  * [Http] is the icecast2 source protocol. 
+  * 
+  * Ogg streaming is only possible with [Http]. Any headerless format,
+  * (e.g. mpeg containers), should work with both protocols,
+  * provided you set the correct content-type (mime) for the source. *)
 type protocol = Icy | Http
 
+(** Special type for content-type (mime) data. *)
 type content_type
+
+(** General mime type for ogg data. *)
 val ogg_application : content_type
+
+(** Mime type for audio data encapsulated using ogg. *)
 val ogg_audio : content_type
+
+(** Mime type for video data encapsulated using ogg. *)
 val ogg_video : content_type
+
+(** Mime type for mpeg audio data (mp3). *)
 val mpeg : content_type
+
+(** Create a mime type from a string (e.g. "audio/aacp") *)
 val content_type_of_string : string -> content_type
+
+(** Get the string representation of a mime type. *)
 val string_of_content_type : content_type -> string
 
+(** Type for a source connection. 
+  *
+  * [headers] is a hash table containing the headers.
+  * See [connection] function for more details. *)
 type connection =
   {
     mount        : string;
@@ -53,26 +91,48 @@ type connection =
     port         : int;
     content_type : content_type;
     protocol     : protocol;
-    icy          : bool;
     headers      : (string, string) Hashtbl.t
   }
 
+(** Type for audio informations. Used for connection headers.
+  * See [audio_info] function for more details. *)
 type audio_info = (string, string) Hashtbl.t
 
+(** Type for metadata values. *)
 type metadata = (string,string) Hashtbl.t
 
+(** Type for the status of a handler. *)
 type status = Connected of connection | Disconnected 
 
+(** Type for the main handler. *)
 type t
 
-val get_status : t -> status
-val get_icy_cap : t -> bool
+  (** {2 API} *)
 
+(** Create a new handler.
+  * 
+  * [ipv6] is [false] by default.
+  * [timeout] is [30.] (seconds) by default.
+  * [bind] is ["0.0.0.0"] by default. *)
 val create :
   ?ipv6:bool ->
   ?timeout:float -> 
   ?bind:string -> unit -> t
 
+(** Get a handler's status *)
+val get_status : t -> status
+
+(** Get a handler's ICY capabilities.
+  * For the [Http] protocol, this is always true.
+  * For the [Icy] protocol, this is detected upon connecting. *)
+val get_icy_cap : t -> bool
+
+(** Get a handler's socket. Use it only if you know
+  * what you are doing. *)
+val get_socket : t -> Unix.file_descr
+
+(** Create a new [audio_info] value,
+  * filed with given values. *)
 val audio_info :
   ?samplerate:int ->
   ?channels:int ->
@@ -80,6 +140,28 @@ val audio_info :
   ?bitrate:int -> 
   unit -> audio_info
 
+(** Create a new [connection] value
+  * with default values. 
+  *
+  * [host] is ["localhost"] by default.
+  * [password] is ["hackme"] by default.
+  * [user] is ["source"] by default. Change [user] only if you know
+  * what your are doing.
+  * [protocol] is [Http] by default.
+  * [port] is [8000] by default.
+  * 
+  * The list of preset headers for [Http] connections is:
+  * ["User-Agent"], ["ice-name"], ["ice-genre"],
+  * ["ice-url"], ["ice-public"], ["ice-audio-info"],
+  * ["ice-description"].
+  *
+  * The list of preset headers for [Icy] connections is:
+  * ["icy-name"], ["icy-url"], ["icy-pub"], 
+  * ["icy-genre"], ["icy-br"]. 
+  *
+  * Additionally, you can also add:
+  * ["icy-irc"], ["icy-icq"] and ["icy-aim"] but these are not added
+  * by this function. *)
 val connection :
   ?user_agent:string ->
   ?name:string ->
@@ -93,16 +175,20 @@ val connection :
   ?password:string ->
   ?protocol:protocol ->
   ?user:string ->
-  ?icy:bool ->
   mount:string -> 
   content_type:content_type -> 
   unit -> connection
 
+(** Connect a handler. *)
 val connect : t -> connection -> unit
 
+(** Update metadata on a handler. Useful only for non-ogg data format,
+  * and if [icy_cap] is [true] for [Icy] connections. *)
 val update_metadata : t -> metadata -> unit
 
+(** Send data to a source connection. *)
 val send : t -> string -> unit
 
+(** Close a source connection. *)
 val close : t -> unit 
 
