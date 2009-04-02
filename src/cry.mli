@@ -183,7 +183,10 @@ val connection :
 val connect : t -> connection -> unit
 
 (** Update metadata on a handler. Useful only for non-ogg data format,
-  * and if [icy_cap] is [true] for [Icy] connections. *)
+  * and if [icy_cap] is [true] for [Icy] connections. 
+  *
+  * For [Icy] protocol, the relevant metadata are only ["song"]
+  * and ["url"]. *)
 val update_metadata : t -> metadata -> unit
 
 (** Send data to a source connection. *)

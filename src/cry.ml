@@ -433,21 +433,32 @@ let update_metadata c m =
     end;
     raise x
   in
-  let port =
-    if source.protocol = Icy then source.port+1 else source.port
-  in
-  connect_socket socket source.host port;
-  let user_agent = 
+  connect_socket socket source.host source.port;
+  let user_agent =
     try
-      Printf.sprintf "User-Agent: %s\r\n"
-         (Hashtbl.find source.headers "User-Agent")
+      Hashtbl.find source.headers "User-Agent"
     with
-      | Not_found -> ""
+      | Not_found -> "ocaml-cry"
+  in
+  (** This seems to be needed for shoutcast *)
+  let agent_complement = 
+    if source.protocol = Icy then
+      " (Mozilla compatible)"
+    else
+      ""
+  in
+  let user_agent = 
+    Printf.sprintf "User-Agent: %s%s\r\n" user_agent agent_complement
   in
   let f x y z =
-    Printf.sprintf "%s&%s=%s" z (url_encode x) (url_encode y)
+    if y <> "" then
+      Printf.sprintf "%s&%s=%s" z (url_encode x) (url_encode y)
+    else
+      z
   in
-  let meta = Hashtbl.fold f m "" in
+  let meta = 
+    Hashtbl.fold f m ""
+  in
   let request = 
     match source.protocol with
       | Http ->
