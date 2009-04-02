@@ -343,6 +343,9 @@ let connect_http c source =
   c.status <- Connected source 
 
 let connect_icy c source = 
+  Hashtbl.add
+   source.headers
+       "content-type" (string_of_content_type source.content_type);
   let f x y z =
     Printf.sprintf "%s%s: %s\r\n" z x y
   in
