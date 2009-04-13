@@ -483,10 +483,13 @@ let update_metadata c m =
   with
     | _ -> raise (Error Close)
 
-let send c x = 
-  let out_e = Unix.out_channel_of_descr c.socket in
-  output_string out_e x;
-  flush out_e
+let send c x =
+  try 
+    let out_e = Unix.out_channel_of_descr c.socket in
+    output_string out_e x;
+    flush out_e
+  with
+    | _ -> raise (Error Write)
 
 let close x = 
     try
