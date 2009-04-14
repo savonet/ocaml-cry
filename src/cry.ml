@@ -302,7 +302,7 @@ let read_data socket raise =
      in
      List.rev (f 0 [])
   with
-     | e -> raise e (*raise (Error Read)*) 
+     | _ -> raise (Error Read) 
 
 let parse_http_answer s = 
   let f v c s =
