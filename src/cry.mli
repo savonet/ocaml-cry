@@ -33,7 +33,8 @@
  (** {2 Types and errors} *)
 
 (** Possible errors. *)
-type error = 
+type error =
+  | Create 
   | Connect
   | Close
   | Write

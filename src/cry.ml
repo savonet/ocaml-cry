@@ -21,6 +21,7 @@
  (** OCaml low level implementation of the shout source protocol. *)
 
 type error = 
+  | Create
   | Connect
   | Close
   | Write
@@ -35,6 +36,7 @@ exception Error of error
 
 let string_of_error e = 
   match e with
+    | Create -> "could not initiate a new handler"
     | Connect -> "could not connect to host"
     | Write -> "could not write data to host"
     | Read -> "could not read data from host"
@@ -87,19 +89,34 @@ type t =
 
 let create_socket ?(ipv6=false) ?(timeout=30.) ?bind () = 
   let domain = if ipv6 then Unix.PF_INET6 else Unix.PF_INET in
-  let socket = Unix.socket domain Unix.SOCK_STREAM 0 in
-  Unix.setsockopt_float socket Unix.SO_RCVTIMEO timeout;
-  Unix.setsockopt_float socket Unix.SO_SNDTIMEO timeout;
-  begin
-   match bind with
-     | None -> ()
-     | Some s ->
-        let bind_addr_inet = (Unix.gethostbyname s).Unix.h_addr_list.(0) in
-        (* Seems like you need to bind on port 0 *)
-        let bind_addr = Unix.ADDR_INET(bind_addr_inet, 0) in
-        Unix.bind socket bind_addr ;
-  end;
-  socket
+  let socket = 
+    try
+      Unix.socket domain Unix.SOCK_STREAM 0
+    with
+      | _ -> raise (Error Create) 
+  in
+  try
+    Unix.setsockopt_float socket Unix.SO_RCVTIMEO timeout;
+    Unix.setsockopt_float socket Unix.SO_SNDTIMEO timeout;
+    begin
+     match bind with
+       | None -> ()
+       | Some s ->
+          let bind_addr_inet = (Unix.gethostbyname s).Unix.h_addr_list.(0) in
+          (* Seems like you need to bind on port 0 *)
+          let bind_addr = Unix.ADDR_INET(bind_addr_inet, 0) in
+          Unix.bind socket bind_addr ;
+    end;
+    socket
+  with
+    | _ -> 
+       begin
+         try 
+           Unix.close socket;
+         with
+           | _ -> ()
+       end;
+       raise (Error Create)
 
 let create ?(ipv6=false) ?timeout ?bind () = 
   { 
