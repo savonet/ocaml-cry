@@ -299,7 +299,10 @@ let write_data socket request raise =
 
 let buf = String.create 1024
 
-(** Read and split data. *)
+(** Read and split data. 
+  * There should always be at least
+  * one element in the resulting list.
+  * If not, something bad happened. *)
 let read_data socket raise =
   try
      let ret = Unix.read socket buf 0 1024 in
@@ -317,7 +320,11 @@ let read_data socket raise =
              else 
                l
      in
-     List.rev (f 0 [])
+     let ret = f 0 [] in
+     if List.length ret = 0 then
+       raise (Error Read)
+     else
+       List.rev (f 0 [])
   with
      | _ -> raise (Error Read) 
 
