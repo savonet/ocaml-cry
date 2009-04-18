@@ -322,7 +322,7 @@ let read_data socket raise =
      in
      let ret = f 0 [] in
      if List.length ret = 0 then
-       raise (Error Read)
+       [""]
      else
        List.rev (f 0 [])
   with
