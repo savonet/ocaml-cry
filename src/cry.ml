@@ -429,6 +429,8 @@ let connect c source =
     if source.protocol = Icy then source.port+1 else source.port 
   in
   connect_socket c.socket source.host port;
+  (* We do not know icy capabilities so far.. *)
+  c.icy_cap <- false;
   match source.protocol with
     | Http -> connect_http c source
     | Icy -> connect_icy c source
