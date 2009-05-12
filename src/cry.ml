@@ -342,7 +342,7 @@ let connect_http c source =
   let raise x =
     begin 
      try
-       Unix.shutdown c.socket Unix.SHUTDOWN_ALL;
+       Unix.close c.socket
      with
        | _ -> ()
     end;
@@ -378,7 +378,7 @@ let connect_icy c source =
   let raise x =
     begin
      try
-       Unix.shutdown c.socket Unix.SHUTDOWN_ALL;
+       Unix.close c.socket
      with
        | _ -> ()
     end;
@@ -455,7 +455,6 @@ let update_metadata c m =
   let raise x =
     begin
      try
-       Unix.shutdown c.socket Unix.SHUTDOWN_ALL;
        Unix.close socket
      with
        | _ -> ()
@@ -504,7 +503,6 @@ let update_metadata c m =
   if code <> 200 then
     raise (Error (Http_answer (code,s,v)));
   try
-    Unix.shutdown socket Unix.SHUTDOWN_ALL;
     Unix.close socket;
   with
     | _ -> raise (Error Close)
@@ -519,7 +517,6 @@ let send c x =
 
 let close x = 
     try
-      Unix.shutdown x.socket Unix.SHUTDOWN_ALL;
       Unix.close x.socket;
       x.status <- Disconnected
     with
