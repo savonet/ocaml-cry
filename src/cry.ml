@@ -127,6 +127,14 @@ let create ?(ipv6=false) ?timeout ?bind () =
     status  = Disconnected
   }
 
+let close x =
+    try
+      x.icy_cap <- false;
+      Unix.close x.socket;
+      x.status <- Disconnected
+    with
+      | _ -> raise (Error Close)
+
 let get_status c = c.status
 let get_icy_cap c = c.icy_cap 
 let get_socket c = c.socket
@@ -289,7 +297,7 @@ let http_header =
 let get_auth source = 
   Printf.sprintf "Basic %s" (encode64 (source.user ^ ":" ^ source.password))
 
-let write_data socket request raise =
+let write_data socket request =
   let len = String.length request in
   try
    if Unix.write socket request 0 len < len then
@@ -303,7 +311,7 @@ let buf = String.create 1024
   * There should always be at least
   * one element in the resulting list.
   * If not, something bad happened. *)
-let read_data socket raise =
+let read_data socket =
   try
      let ret = Unix.read socket buf 0 1024 in
      (* split data *)
@@ -339,32 +347,27 @@ let parse_http_answer s =
 
 let connect_http c source = 
   let auth = get_auth source in 
-  let raise x =
-    begin 
-     try
-       Unix.close c.socket
-     with
-       | _ -> ()
-    end;
-    raise x
-  in
-  Hashtbl.add source.headers "Authorization" auth;
-  Hashtbl.add 
-   source.headers 
+  try
+    Hashtbl.add source.headers "Authorization" auth;
+    Hashtbl.add 
+     source.headers 
        "Content-type" (string_of_content_type source.content_type);
-  let f x y z = 
-    Printf.sprintf "%s%s: %s\r\n" z x y
-  in
-  let headers = Hashtbl.fold f source.headers "" in
-  let request = http_header source.mount headers in
-  write_data c.socket request raise;
-  (** Read input from socket. *)
-  let ret = read_data c.socket raise in 
-  let (v,code,s) = parse_http_answer (List.hd ret) in
-  if code < 200 || code >= 300 then
-    raise (Error (Http_answer (code,s,v)));
-  c.icy_cap <- true; 
-  c.status <- Connected source 
+    let f x y z = 
+      Printf.sprintf "%s%s: %s\r\n" z x y
+    in
+    let headers = Hashtbl.fold f source.headers "" in
+    let request = http_header source.mount headers in
+    write_data c.socket request;
+    (** Read input from socket. *)
+    let ret = read_data c.socket in 
+    let (v,code,s) = parse_http_answer (List.hd ret) in
+    if code < 200 || code >= 300 then
+      raise (Error (Http_answer (code,s,v)));
+    c.icy_cap <- true; 
+    c.status <- Connected source 
+  with
+    | e -> close c;
+           raise e
 
 let connect_icy c source = 
   Hashtbl.add
@@ -375,45 +378,40 @@ let connect_icy c source =
   in
   let headers = Hashtbl.fold f source.headers "" in
   let request = Printf.sprintf "%s\r\n%s\r\n" source.password headers in
-  let raise x =
+  try
+    write_data c.socket request;
+    (** Read input from socket. *)
+    let ret = read_data c.socket in
+    let f s =
+      if s.[0] <> 'O' && s.[1] <> 'K' then
+        raise (Error (Bad_answer s));
+    in
     begin
      try
-       Unix.close c.socket
+       Scanf.sscanf (List.hd ret) "%[^\r^\n]" f
      with
-       | _ -> ()
+       | Scanf.Scan_failure s -> raise (Error (Bad_answer s))
     end;
-    raise x
-  in
-  write_data c.socket request raise;
-  (** Read input from socket. *)
-  let ret = read_data c.socket raise in
-  let f s =
-    if s.[0] <> 'O' && s.[1] <> 'K' then
-      raise (Error (Bad_answer s));
-  in
-  begin
-   try
-     Scanf.sscanf (List.hd ret) "%[^\r^\n]" f
-   with
-     | Scanf.Scan_failure s -> raise (Error (Bad_answer s))
-  end;
-  (* Read another line *)
-  let ret = 
-    match ret with
-      | x :: y :: _ -> y
-      | _ -> List.hd (read_data c.socket raise)
-  in
-  let f s =
-    c.icy_cap <- true
-  in
-  begin
-   try
-     Scanf.sscanf ret "icy-caps:%[1]" f
-   with
-     | Scanf.Scan_failure s -> ()
-  end;
-  c.status <- Connected source
-
+    (* Read another line *)
+    let ret = 
+      match ret with
+        | x :: y :: _ -> y
+        | _ -> List.hd (read_data c.socket)
+    in
+    let f s =
+      c.icy_cap <- true
+    in
+    begin
+     try
+       Scanf.sscanf ret "icy-caps:%[1]" f
+     with
+       | Scanf.Scan_failure s -> ()
+    end;
+    c.status <- Connected source
+  with
+    | e -> close c;
+           raise e 
+       
 let connect_socket socket host port = 
   try
     Unix.connect
@@ -452,60 +450,57 @@ let update_metadata c m =
   if not c.icy_cap then
     raise (Error Invalid_usage);
   let socket = create_socket ~ipv6:c.ipv6 ?bind:c.bind () in
-  let raise x =
-    begin
-     try
-       Unix.close socket
-     with
-       | _ -> ()
-    end;
-    raise x
-  in
   connect_socket socket source.host source.port;
-  let user_agent =
-    try
-      Hashtbl.find source.headers "User-Agent"
-    with
-      | Not_found -> "ocaml-cry"
+  let close () = 
+   try
+    Unix.close socket
+   with
+     | _ -> raise (Error Close)
   in
-  (** This seems to be needed for shoutcast *)
-  let agent_complement = 
-    if source.protocol = Icy then
-      " (Mozilla compatible)"
-    else
-      ""
-  in
-  let user_agent = 
-    Printf.sprintf "User-Agent: %s%s\r\n" user_agent agent_complement
-  in
-  let f x y z =
-    if y <> "" then
-      Printf.sprintf "%s&%s=%s" z (url_encode x) (url_encode y)
-    else
-      z
-  in
-  let meta = 
-    Hashtbl.fold f m ""
-  in
-  let request = 
-    match source.protocol with
-      | Http ->
-          let headers = 
-            Printf.sprintf "Authorization: %s\r\n%s" (get_auth source) user_agent
-          in
-          http_meta_request source.mount meta headers
-      | Icy -> icy_meta_request source.password meta user_agent
-  in
-  write_data socket request raise;
-  (** Read input from socket. *)
-  let ret = read_data socket raise in
-  let (v,code,s) = parse_http_answer (List.hd ret) in
-  if code <> 200 then
-    raise (Error (Http_answer (code,s,v)));
   try
-    Unix.close socket;
+    let user_agent =
+      try
+        Hashtbl.find source.headers "User-Agent"
+      with
+        | Not_found -> "ocaml-cry"
+    in
+    (** This seems to be needed for shoutcast *)
+    let agent_complement = 
+      if source.protocol = Icy then
+        " (Mozilla compatible)"
+      else
+        ""
+    in
+    let user_agent = 
+      Printf.sprintf "User-Agent: %s%s\r\n" user_agent agent_complement
+    in
+    let f x y z =
+      if y <> "" then
+        Printf.sprintf "%s&%s=%s" z (url_encode x) (url_encode y)
+      else
+        z
+    in
+    let meta = 
+      Hashtbl.fold f m ""
+    in
+    let request = 
+      match source.protocol with
+        | Http ->
+            let headers = 
+              Printf.sprintf "Authorization: %s\r\n%s" (get_auth source) user_agent
+            in
+            http_meta_request source.mount meta headers
+        | Icy -> icy_meta_request source.password meta user_agent
+    in
+    write_data socket request;
+    (** Read input from socket. *)
+    let ret = read_data socket in
+    let (v,code,s) = parse_http_answer (List.hd ret) in
+    if code <> 200 then
+      raise (Error (Http_answer (code,s,v)));
+    close ()
   with
-    | _ -> raise (Error Close)
+    | e -> close (); raise e
 
 let send c x =
   try 
@@ -515,10 +510,3 @@ let send c x =
   with
     | _ -> raise (Error Write)
 
-let close x = 
-    try
-      Unix.close x.socket;
-      x.status <- Disconnected
-    with
-      | _ -> raise (Error Close)
- 
