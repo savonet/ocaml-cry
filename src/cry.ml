@@ -80,9 +80,10 @@ type status = Connected of connection | Disconnected
 
 type t = 
   { 
-    socket          : Unix.file_descr;
+    mutable socket  : Unix.file_descr;
     ipv6            : bool;
     bind            : string option;
+    timeout         : float option;
     mutable icy_cap : bool;
     mutable status  : status
   }
@@ -123,6 +124,7 @@ let create ?(ipv6=false) ?timeout ?bind () =
     socket  = create_socket ~ipv6 ?timeout ?bind (); 
     ipv6    = ipv6;
     bind    = bind;
+    timeout = timeout;
     icy_cap = false;
     status  = Disconnected
   }
@@ -131,7 +133,10 @@ let close x =
     try
       x.icy_cap <- false;
       Unix.close x.socket;
-      x.status <- Disconnected
+      x.status <- Disconnected;
+      x.socket <- create_socket ~ipv6:x.ipv6 
+                                ?timeout:x.timeout 
+                                ?bind:x.bind ()
     with
       | _ -> raise (Error Close)
 
