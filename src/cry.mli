@@ -103,7 +103,7 @@ type audio_info = (string, string) Hashtbl.t
 type metadata = (string,string) Hashtbl.t
 
 (** Type for the status of a handler. *)
-type status = Connected of connection | Disconnected 
+type status = Connected of (connection*Unix.file_descr) | Disconnected 
 
 (** Type for the main handler. *)
 type t
@@ -129,7 +129,9 @@ val get_status : t -> status
 val get_icy_cap : t -> bool
 
 (** Get a handler's socket. Use it only if you know
-  * what you are doing. *)
+  * what you are doing. 
+  *
+  * Raises: [Error Not_connected] if not connected. *)
 val get_socket : t -> Unix.file_descr
 
 (** Create a new [audio_info] value,
@@ -187,12 +189,21 @@ val connect : t -> connection -> unit
   * and if [icy_cap] is [true] for [Icy] connections. 
   *
   * For [Icy] protocol, the relevant metadata are only ["song"]
-  * and ["url"]. *)
+  * and ["url"]. 
+  *
+  * Raises: [Error Not_connected]
+  * if not connected. *)
 val update_metadata : t -> metadata -> unit
 
-(** Send data to a source connection. *)
+(** Send data to a source connection. 
+  *
+  * Raises: [Error Not_connected]
+  * if not connected. *)
 val send : t -> string -> unit
 
-(** Close a source connection. *)
+(** Close a source connection. 
+  * 
+  * Raises: [Error Not_connected]
+  * if not connected. *)
 val close : t -> unit 
 

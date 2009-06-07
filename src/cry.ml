@@ -76,17 +76,21 @@ type audio_info = (string,string) Hashtbl.t
 
 type metadata = (string,string) Hashtbl.t
 
-type status = Connected of connection | Disconnected 
+type status = Connected of (connection*Unix.file_descr) | Disconnected 
 
 type t = 
   { 
-    mutable socket  : Unix.file_descr;
     ipv6            : bool;
     bind            : string option;
     timeout         : float option;
     mutable icy_cap : bool;
     mutable status  : status
   }
+
+let get_socket x = 
+  match x.status with
+    | Connected (_,s) -> s
+    | Disconnected -> raise (Error Not_connected)
 
 let create_socket ?(ipv6=false) ?(timeout=30.) ?bind () = 
   let domain = if ipv6 then Unix.PF_INET6 else Unix.PF_INET in
@@ -121,7 +125,6 @@ let create_socket ?(ipv6=false) ?(timeout=30.) ?bind () =
 
 let create ?(ipv6=false) ?timeout ?bind () = 
   { 
-    socket  = create_socket ~ipv6 ?timeout ?bind (); 
     ipv6    = ipv6;
     bind    = bind;
     timeout = timeout;
@@ -131,18 +134,15 @@ let create ?(ipv6=false) ?timeout ?bind () =
 
 let close x =
     try
+      Unix.close (get_socket x);
       x.icy_cap <- false;
-      Unix.close x.socket;
-      x.status <- Disconnected;
-      x.socket <- create_socket ~ipv6:x.ipv6 
-                                ?timeout:x.timeout 
-                                ?bind:x.bind ()
+      x.status <- Disconnected
     with
+      | Error _ as e -> raise e
       | _ -> raise (Error Close)
 
 let get_status c = c.status
 let get_icy_cap c = c.icy_cap 
-let get_socket c = c.socket
 
 let audio_info 
   ?(samplerate) ?(channels) ?(quality) ?(bitrate) () = 
@@ -350,7 +350,7 @@ let parse_http_answer s =
   with
     | Scanf.Scan_failure s -> raise (Error (Bad_answer s))
 
-let connect_http c source = 
+let connect_http c socket source = 
   let auth = get_auth source in 
   try
     Hashtbl.add source.headers "Authorization" auth;
@@ -362,19 +362,19 @@ let connect_http c source =
     in
     let headers = Hashtbl.fold f source.headers "" in
     let request = http_header source.mount headers in
-    write_data c.socket request;
+    write_data socket request;
     (** Read input from socket. *)
-    let ret = read_data c.socket in 
+    let ret = read_data socket in 
     let (v,code,s) = parse_http_answer (List.hd ret) in
     if code < 200 || code >= 300 then
       raise (Error (Http_answer (code,s,v)));
     c.icy_cap <- true; 
-    c.status <- Connected source 
+    c.status <- Connected (source,socket)
   with
     | e -> close c;
            raise e
 
-let connect_icy c source = 
+let connect_icy c socket source = 
   Hashtbl.add
    source.headers
        "content-type" (string_of_content_type source.content_type);
@@ -384,9 +384,9 @@ let connect_icy c source =
   let headers = Hashtbl.fold f source.headers "" in
   let request = Printf.sprintf "%s\r\n%s\r\n" source.password headers in
   try
-    write_data c.socket request;
+    write_data socket request;
     (** Read input from socket. *)
-    let ret = read_data c.socket in
+    let ret = read_data socket in
     let f s =
       if s.[0] <> 'O' && s.[1] <> 'K' then
         raise (Error (Bad_answer s));
@@ -401,7 +401,7 @@ let connect_icy c source =
     let ret = 
       match ret with
         | x :: y :: _ -> y
-        | _ -> List.hd (read_data c.socket)
+        | _ -> List.hd (read_data socket)
     in
     let f s =
       c.icy_cap <- true
@@ -412,7 +412,7 @@ let connect_icy c source =
      with
        | Scanf.Scan_failure s -> ()
     end;
-    c.status <- Connected source
+    c.status <- Connected (source,socket)
   with
     | e -> close c;
            raise e 
@@ -431,12 +431,19 @@ let connect c source =
   let port = 
     if source.protocol = Icy then source.port+1 else source.port 
   in
-  connect_socket c.socket source.host port;
+  let socket = create_socket ~ipv6:c.ipv6
+                             ?timeout:c.timeout
+                             ?bind:c.bind ()
+  in
+  connect_socket socket source.host port;
   (* We do not know icy capabilities so far.. *)
   c.icy_cap <- false;
-  match source.protocol with
-    | Http -> connect_http c source
-    | Icy -> connect_icy c source
+  try
+    match source.protocol with
+      | Http -> connect_http c socket source
+      | Icy -> connect_icy c socket source
+  with
+    | e -> Unix.close socket; raise e
 
 let http_meta_request = 
   Printf.sprintf 
@@ -449,7 +456,7 @@ let icy_meta_request =
 let update_metadata c m = 
   let source = 
     match c.status with
-      | Connected x -> x 
+      | Connected (x,_) -> x 
       | _ -> raise (Error Not_connected)
   in
   if not c.icy_cap then
@@ -508,8 +515,9 @@ let update_metadata c m =
     | e -> close (); raise e
 
 let send c x =
-  try 
-    let out_e = Unix.out_channel_of_descr c.socket in
+  try
+    let socket = get_socket c in 
+    let out_e = Unix.out_channel_of_descr socket in
     output_string out_e x;
     flush out_e
   with
