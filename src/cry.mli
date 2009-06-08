@@ -103,7 +103,7 @@ type audio_info = (string, string) Hashtbl.t
 type metadata = (string,string) Hashtbl.t
 
 (** Type for the status of a handler. *)
-type status = Connected of (connection*Unix.file_descr) | Disconnected 
+type status = Connected of connection | Disconnected 
 
 (** Type for the main handler. *)
 type t

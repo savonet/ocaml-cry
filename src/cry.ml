@@ -76,7 +76,9 @@ type audio_info = (string,string) Hashtbl.t
 
 type metadata = (string,string) Hashtbl.t
 
-type status = Connected of (connection*Unix.file_descr) | Disconnected 
+type status_priv = PrivConnected of (connection*Unix.file_descr) | PrivDisconnected 
+
+type status = Connected of connection | Disconnected
 
 type t = 
   { 
@@ -84,13 +86,13 @@ type t =
     bind            : string option;
     timeout         : float option;
     mutable icy_cap : bool;
-    mutable status  : status
+    mutable status  : status_priv
   }
 
 let get_socket x = 
   match x.status with
-    | Connected (_,s) -> s
-    | Disconnected -> raise (Error Not_connected)
+    | PrivConnected (_,s) -> s
+    | PrivDisconnected -> raise (Error Not_connected)
 
 let create_socket ?(ipv6=false) ?(timeout=30.) ?bind () = 
   let domain = if ipv6 then Unix.PF_INET6 else Unix.PF_INET in
@@ -129,19 +131,23 @@ let create ?(ipv6=false) ?timeout ?bind () =
     bind    = bind;
     timeout = timeout;
     icy_cap = false;
-    status  = Disconnected
+    status  = PrivDisconnected
   }
 
 let close x =
     try
       Unix.close (get_socket x);
       x.icy_cap <- false;
-      x.status <- Disconnected
+      x.status <- PrivDisconnected
     with
       | Error _ as e -> raise e
       | _ -> raise (Error Close)
 
-let get_status c = c.status
+let get_status c = 
+  match c.status with
+    | PrivConnected (x,_) -> Connected x
+    | PrivDisconnected -> Disconnected
+
 let get_icy_cap c = c.icy_cap 
 
 let audio_info 
@@ -369,7 +375,7 @@ let connect_http c socket source =
     if code < 200 || code >= 300 then
       raise (Error (Http_answer (code,s,v)));
     c.icy_cap <- true; 
-    c.status <- Connected (source,socket)
+    c.status <- PrivConnected (source,socket)
   with
     | e -> close c;
            raise e
@@ -412,7 +418,7 @@ let connect_icy c socket source =
      with
        | Scanf.Scan_failure s -> ()
     end;
-    c.status <- Connected (source,socket)
+    c.status <- PrivConnected (source,socket)
   with
     | e -> close c;
            raise e 
@@ -426,7 +432,7 @@ let connect_socket socket host port =
     | _ -> raise (Error Connect)
  
 let connect c source =
-  if c.status <> Disconnected then
+  if c.status <> PrivDisconnected then
     raise (Error Busy);
   let port = 
     if source.protocol = Icy then source.port+1 else source.port 
@@ -456,7 +462,7 @@ let icy_meta_request =
 let update_metadata c m = 
   let source = 
     match c.status with
-      | Connected (x,_) -> x 
+      | PrivConnected (x,_) -> x 
       | _ -> raise (Error Not_connected)
   in
   if not c.icy_cap then
