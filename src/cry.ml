@@ -209,8 +209,7 @@ let connection
           "ice-audio-info", audio_info;
           "ice-description", description]
       | Icy -> 
-         ["User-Agent", user_agent;
-          "icy-name", name;
+         ["icy-name", name;
           "icy-url", url;
           "icy-pub", public;
           "icy-genre", genre;
@@ -347,6 +346,31 @@ let read_data socket =
   with
      | _ -> raise (Error Read) 
 
+let header_string source =
+    (* Icy headers are of the form: %s:%s *)
+    let sep = 
+      if source.protocol = Icy then
+        ""
+      else
+        " "
+    in 
+    let f x y z =
+      Printf.sprintf "%s%s:%s%s\r\n" z x sep y
+    in
+    let headers = Hashtbl.fold f source.headers "" in
+    (* "content-type" seems to be in lower case
+     * for shoutcast. *)
+    let label = 
+      if source.protocol = Icy then
+        "content-type"
+      else
+        "Content-Type" 
+    in
+    (* Adding content-type last: seems to help for
+     * shoutcast. 
+     * See: http://forums.winamp.com/showthread.php?threadid=285035 *)
+    Printf.sprintf "%s%s:%s%s\r\n" headers label sep source.content_type
+
 let parse_http_answer s = 
   let f v c s =
     (v,c,s)
@@ -360,13 +384,7 @@ let connect_http c socket source =
   let auth = get_auth source in 
   try
     Hashtbl.add source.headers "Authorization" auth;
-    Hashtbl.add 
-     source.headers 
-       "Content-type" (string_of_content_type source.content_type);
-    let f x y z = 
-      Printf.sprintf "%s%s: %s\r\n" z x y
-    in
-    let headers = Hashtbl.fold f source.headers "" in
+    let headers = header_string source in
     let request = http_header source.mount headers in
     write_data socket request;
     (** Read input from socket. *)
@@ -381,13 +399,7 @@ let connect_http c socket source =
            raise e
 
 let connect_icy c socket source = 
-  Hashtbl.add
-   source.headers
-       "content-type" (string_of_content_type source.content_type);
-  let f x y z =
-    Printf.sprintf "%s%s: %s\r\n" z x y
-  in
-  let headers = Hashtbl.fold f source.headers "" in
+  let headers = header_string source in
   let request = Printf.sprintf "%s\r\n%s\r\n" source.password headers in
   try
     write_data socket request;
