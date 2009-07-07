@@ -434,7 +434,8 @@ let connect_icy c socket source =
   with
     | e -> close c;
            raise e 
-       
+
+(** This function does *not* close the socket in case of error.. *)   
 let connect_socket socket host port = 
   try
     Unix.connect
@@ -453,10 +454,10 @@ let connect c source =
                              ?timeout:c.timeout
                              ?bind:c.bind ()
   in
-  connect_socket socket source.host port;
-  (* We do not know icy capabilities so far.. *)
-  c.icy_cap <- false;
   try
+    connect_socket socket source.host port;
+    (* We do not know icy capabilities so far.. *)
+    c.icy_cap <- false;
     match source.protocol with
       | Http -> connect_http c socket source
       | Icy -> connect_icy c socket source
@@ -480,7 +481,6 @@ let update_metadata c m =
   if not c.icy_cap then
     raise (Error Invalid_usage);
   let socket = create_socket ~ipv6:c.ipv6 ?bind:c.bind () in
-  connect_socket socket source.host source.port;
   let close () = 
    try
     Unix.close socket
@@ -488,6 +488,7 @@ let update_metadata c m =
      | _ -> raise (Error Close)
   in
   try
+    connect_socket socket source.host source.port ;
     let user_agent =
       try
         Hashtbl.find source.headers "User-Agent"
