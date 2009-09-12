@@ -395,8 +395,14 @@ let connect_http c socket source =
     c.icy_cap <- true; 
     c.status <- PrivConnected (source,socket)
   with
-    | e -> close c;
-           raise e
+    | e -> 
+       begin
+        try
+          close c
+        with
+          | _ -> ()
+       end ;
+       raise e
 
 let connect_icy c socket source = 
   let headers = header_string source in
@@ -432,8 +438,14 @@ let connect_icy c socket source =
     end;
     c.status <- PrivConnected (source,socket)
   with
-    | e -> close c;
-           raise e 
+    | e ->
+       begin
+        try
+          close c
+        with
+          | _ -> ()
+       end ;
+       raise e
 
 (** This function does *not* close the socket in case of error.. *)   
 let connect_socket socket host port = 
@@ -462,7 +474,14 @@ let connect c source =
       | Http -> connect_http c socket source
       | Icy -> connect_icy c socket source
   with
-    | e -> Unix.close socket; raise e
+    | e -> 
+       begin
+        try
+         Unix.close socket
+        with
+          | _ -> ()
+       end; 
+       raise e
 
 let http_meta_request = 
   Printf.sprintf 
@@ -531,7 +550,14 @@ let update_metadata c m =
       raise (Error (Http_answer (code,s,v)));
     close ()
   with
-    | e -> close (); raise e
+    | e -> 
+       begin
+        try
+         close ()
+        with
+          | _ -> () 
+       end ;
+       raise e
 
 let send c x =
   try
