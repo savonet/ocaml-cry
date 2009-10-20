@@ -29,7 +29,7 @@ type error =
   | Busy
   | Not_connected
   | Invalid_usage 
-  | Bad_answer of string 
+  | Bad_answer of string option 
   | Http_answer of int*string*string
 
 exception Error of error
@@ -44,7 +44,11 @@ let string_of_error e =
     | Busy -> "busy"
     | Not_connected -> "not connected"
     | Invalid_usage -> "invalid usage"
-    | Bad_answer s -> Printf.sprintf "bad answer: %s" s
+    | Bad_answer s -> 
+         Printf.sprintf "bad answer%s" 
+           (match s with
+              | Some s -> Printf.sprintf ": %s" s
+              | None   -> "")
     | Http_answer (c,x,v) -> 
        Printf.sprintf "%i, %s (HTTP/%s)" 
                       c x v
@@ -378,7 +382,8 @@ let parse_http_answer s =
   try
     Scanf.sscanf s "HTTP/%s %i %[^\r^\n]" f
   with
-    | Scanf.Scan_failure s -> raise (Error (Bad_answer s))
+    | Scanf.Scan_failure s -> raise (Error (Bad_answer (Some s)))
+    | _ -> raise (Error (Bad_answer None))
 
 let connect_http c socket source = 
   let auth = get_auth source in 
@@ -405,21 +410,21 @@ let connect_http c socket source =
        raise e
 
 let connect_icy c socket source = 
-  let headers = header_string source in
-  let request = Printf.sprintf "%s\r\n%s\r\n" source.password headers in
+  let request = Printf.sprintf "%s\r\n" source.password in
   try
     write_data socket request;
     (** Read input from socket. *)
     let ret = read_data socket in
     let f s =
       if s.[0] <> 'O' && s.[1] <> 'K' then
-        raise (Error (Bad_answer s));
+        raise (Error (Bad_answer (Some s)));
     in
     begin
      try
        Scanf.sscanf (List.hd ret) "%[^\r^\n]" f
      with
-       | Scanf.Scan_failure s -> raise (Error (Bad_answer s))
+       | Scanf.Scan_failure s -> raise (Error (Bad_answer (Some s)))
+       | _ -> raise (Error (Bad_answer None))
     end;
     (* Read another line *)
     let ret = 
@@ -436,6 +441,10 @@ let connect_icy c socket source =
      with
        | Scanf.Scan_failure s -> ()
     end;
+    (* Now Write headers *)
+    let headers = header_string source in
+    let request = Printf.sprintf "%s\r\n" headers in
+    write_data socket request;
     c.status <- PrivConnected (source,socket)
   with
     | e ->

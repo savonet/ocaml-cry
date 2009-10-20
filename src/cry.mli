@@ -42,7 +42,7 @@ type error =
   | Busy 
   | Not_connected
   | Invalid_usage
-  | Bad_answer of string 
+  | Bad_answer of string option 
   | Http_answer of int*string*string
 
 exception Error of error

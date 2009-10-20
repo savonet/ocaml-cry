@@ -1,3 +1,9 @@
+0.1.1 ()
+=====
+* Fixed ICY source connection; send 
+  headers only after receiving "OK2"
+* Fixed error: Scanf may raise other exceptions,
+  catching any of them now..
 0.1.0 (2009-10-12)
 =====
 * Initial release
