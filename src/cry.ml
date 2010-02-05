@@ -308,8 +308,8 @@ let url_encode s =
 let http_header =
   Printf.sprintf "SOURCE %s HTTP/1.1\r\n%s\r\n\r\n"
 
-let get_auth source = 
-  Printf.sprintf "Basic %s" (encode64 (source.user ^ ":" ^ source.password))
+let get_auth user password = 
+  Printf.sprintf "Basic %s" (encode64 (user ^ ":" ^ password))
 
 let write_data socket request =
   let len = String.length request in
@@ -386,7 +386,7 @@ let parse_http_answer s =
     | _ -> raise (Error (Bad_answer None))
 
 let connect_http c socket source = 
-  let auth = get_auth source in 
+  let auth = get_auth source.user source.password in 
   try
     Hashtbl.add source.headers "Authorization" auth;
     let headers = header_string source in
@@ -500,15 +500,22 @@ let icy_meta_request =
   Printf.sprintf 
     "GET /admin.cgi?mode=updinfo&pass=%s%s HTTP/1.0\r\n%s\r\n"
 
-let update_metadata c m = 
-  let source = 
-    match c.status with
-      | PrivConnected (x,_) -> x 
-      | _ -> raise (Error Not_connected)
+let manual_update_metadata 
+       ~host ~port ~protocol ~user ~password 
+       ~mount ?headers ?(ipv6=false) 
+       ?bind m =
+  let mount = 
+    if mount.[0] <> '/' then
+      "/" ^ mount
+    else
+      mount
+  in 
+  let headers = 
+    match headers with
+      | Some x -> x
+      | None   -> Hashtbl.create 0
   in
-  if not c.icy_cap then
-    raise (Error Invalid_usage);
-  let socket = create_socket ~ipv6:c.ipv6 ?bind:c.bind () in
+  let socket = create_socket ~ipv6 ?bind () in
   let close () = 
    try
     Unix.close socket
@@ -516,16 +523,16 @@ let update_metadata c m =
      | _ -> raise (Error Close)
   in
   try
-    connect_socket socket source.host source.port ;
+    connect_socket socket host port ;
     let user_agent =
       try
-        Hashtbl.find source.headers "User-Agent"
+        Hashtbl.find headers "User-Agent"
       with
         | Not_found -> "ocaml-cry"
     in
     (** This seems to be needed for shoutcast *)
     let agent_complement = 
-      if source.protocol = Icy then
+      if protocol = Icy then
         " (Mozilla compatible)"
       else
         ""
@@ -543,13 +550,13 @@ let update_metadata c m =
       Hashtbl.fold f m ""
     in
     let request = 
-      match source.protocol with
+      match protocol with
         | Http ->
             let headers = 
-              Printf.sprintf "Authorization: %s\r\n%s" (get_auth source) user_agent
+              Printf.sprintf "Authorization: %s\r\n%s" (get_auth user password) user_agent
             in
-            http_meta_request source.mount meta headers
-        | Icy -> icy_meta_request source.password meta user_agent
+            http_meta_request mount meta headers
+        | Icy -> icy_meta_request password meta user_agent
     in
     write_data socket request;
     (** Read input from socket. *)
@@ -568,12 +575,40 @@ let update_metadata c m =
        end ;
        raise e
 
+let update_metadata c m = 
+  let source =                                                              
+    match c.status with                                                     
+      | PrivConnected (x,_) -> x                                            
+      | _ -> raise (Error Not_connected) 
+  in
+  if not c.icy_cap then                                                     
+    raise (Error Invalid_usage);
+  let user = source.user in
+  let port = source.port in
+  let password = source.password in
+  let headers = Some source.headers in
+  let protocol = source.protocol in
+  let mount = source.mount in
+  let host = source.host in
+  let ipv6 = c.ipv6 in
+  let bind = c.bind in
+  manual_update_metadata 
+       ~host ~port ~protocol 
+       ~user ~password
+       ~mount ?headers 
+       ~ipv6 ?bind m
+
 let send c x =
   try
-    let socket = get_socket c in 
-    let out_e = Unix.out_channel_of_descr socket in
-    output_string out_e x;
-    flush out_e
+    let socket = get_socket c in
+    let len = String.length x in
+    let rec write ofs = 
+      let rem = len - ofs in
+      let ret = Unix.write socket x ofs rem in
+      if ret < rem then
+        write (ofs+ret)
+    in
+    write 0 
   with
     | _ -> raise (Error Write)
 

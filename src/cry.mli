@@ -195,6 +195,20 @@ val connect : t -> connection -> unit
   * if not connected. *)
 val update_metadata : t -> metadata -> unit
 
+(** Manually update metadata on any source with
+  * being connected or streaming. 
+  *
+  * Use it only if you know what you are doing ! *)
+val manual_update_metadata :  
+           host:string ->
+           port:int ->
+           protocol:protocol ->
+           user:string ->
+           password:string ->
+           mount:string ->
+           ?headers:(string, string) Hashtbl.t ->
+           ?ipv6:bool -> ?bind:string -> metadata -> unit
+
 (** Send data to a source connection. 
   *
   * Raises: [Error Not_connected]
