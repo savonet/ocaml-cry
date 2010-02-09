@@ -1,4 +1,4 @@
-0.2.0 ()
+0.1.2 (2010-02-08)
 =====
 * Changed send function to 
   use Unix.write instead of Pervasives.
