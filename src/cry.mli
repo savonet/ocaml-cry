@@ -18,19 +18,20 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *)
 
- (** Native implementation of the shout source protocols for icecast and shoutcast. *)
+(** Native implementation of the shout source protocols
+  * for icecast and shoutcast. *)
 
- (** {2 Description} 
-   *
-   * [Cry] implements the protocols used to connect and send source data to 
-   * icecast2 and shoutcast servers. 
-   *
-   * It is a low-level implementation, so it only does the minimal source connection.
-   * In particular, it does not handle synchronisation. Hence, the task of sending
-   * audio data to the streaming server at real time rate is up to the programmer, 
-   * contrary to the main implementation, libshout. *)
+(** {2 Description} 
+  *
+  * [Cry] implements the protocols used to connect and send source data to 
+  * icecast2 and shoutcast servers. 
+  *
+  * It is a low-level implementation that minimally manages source
+  * connections. In particular, it does not handle synchronisation, unlike
+  * the main implementation libshout. Hence, the task of sending audio data
+  * to the streaming server at real time rate is left to the application. *)
 
- (** {2 Types and errors} *)
+(** {2 Types and errors} *)
 
 (** Possible errors. *)
 type error =

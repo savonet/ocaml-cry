@@ -1,18 +1,15 @@
 0.1.2 (2010-02-08)
 =====
-* Changed send function to 
-  use Unix.write instead of Pervasives.
-  This has been reported to generate much less load.
-* Added manual_update_metadata to 
-  update metadata on any source with being
-  previously connected/streaming on it.
+* Fix the sending code: older versions resulted in a high load and
+  in some cases in loss of stream chunks.
+* Added manual_update_metadata to update metadata on any source without
+  being necessarily connected/streaming on it.
 
 0.1.1 (2009-10-26)
 =====
-* Fixed ICY source connection; send 
-  headers only after receiving "OK2"
-* Fixed error: Scanf may raise other exceptions,
-  catching any of them now..
+* Fixed ICY source connection; send headers only after receiving "OK2".
+* Fixed error: Scanf may raise other exceptions, catching any of them now.
+
 0.1.0 (2009-10-12)
 =====
 * Initial release
