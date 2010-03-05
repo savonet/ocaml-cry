@@ -196,8 +196,8 @@ val connect : t -> connection -> unit
   * if not connected. *)
 val update_metadata : t -> metadata -> unit
 
-(** Manually update metadata on any source with
-  * being connected or streaming. 
+(** Manually update metadata on any source without necessarily
+  * being connected to it for streaming.
   *
   * Use it only if you know what you are doing ! *)
 val manual_update_metadata :  
