@@ -313,9 +313,14 @@ let get_auth user password =
 
 let write_data socket request =
   let len = String.length request in
+  let rec write ofs =
+    let rem = len - ofs in
+    let ret = Unix.write socket request ofs rem in
+    if ret < rem then
+      write (ofs+ret)
+  in
   try
-   if Unix.write socket request 0 len < len then
-    raise (Error Write)
+    write 0
   with
     | _ -> raise (Error Write)
 
@@ -599,16 +604,6 @@ let update_metadata c m =
        ~ipv6 ?bind m
 
 let send c x =
-  try
-    let socket = get_socket c in
-    let len = String.length x in
-    let rec write ofs = 
-      let rem = len - ofs in
-      let ret = Unix.write socket x ofs rem in
-      if ret < rem then
-        write (ofs+ret)
-    in
-    write 0 
-  with
-    | _ -> raise (Error Write)
+  let socket = get_socket c in
+  write_data socket x
 
