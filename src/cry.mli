@@ -115,7 +115,7 @@ type t
   * 
   * [ipv6] is [false] by default.
   * [timeout] is [30.] (seconds) by default.
-  * [bind] is ["0.0.0.0"] by default. *)
+  * [bind] is not used by default (system default). *)
 val create :
   ?ipv6:bool ->
   ?timeout:float -> 
