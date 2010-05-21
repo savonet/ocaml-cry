@@ -1,7 +1,7 @@
 0.1.3 ()
 =====
 * Use recursive calls to Unix.write
-  everywhere.
+  everywhere and make it safer.
 
 0.1.2 (2010-02-08)
 =====

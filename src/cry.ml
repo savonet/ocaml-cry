@@ -315,9 +315,12 @@ let write_data socket request =
   let len = String.length request in
   let rec write ofs =
     let rem = len - ofs in
-    let ret = Unix.write socket request ofs rem in
-    if ret < rem then
-      write (ofs+ret)
+    if rem > 0 then
+      let ret = Unix.write socket request ofs rem in
+      if ret = 0 then
+        raise (Error Write) ;
+      if ret < rem then
+        write (ofs+ret)
   in
   try
     write 0
