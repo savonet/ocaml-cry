@@ -1,4 +1,4 @@
-0.1.3 ()
+0.1.3 (2010-08-19)
 =====
 * Use recursive calls to Unix.write
   everywhere and make it safer.

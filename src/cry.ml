@@ -341,7 +341,7 @@ let read_data socket =
      let rec f pos l = 
        try
          let x = String.index_from buf pos '\n' in
-         f (pos+x+1) (String.sub buf pos (pos+x)::l)
+         f (x+1) (String.sub buf pos (x-pos-1)::l)
        with
          | Invalid_argument _ 
          | Not_found -> 
