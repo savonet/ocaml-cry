@@ -453,7 +453,7 @@ let connect_icy c socket source =
     end;
     (* Now Write headers *)
     let headers = header_string source in
-    let request = Printf.sprintf "%s\r\n" headers in
+    let request = Printf.sprintf "%s\r\n\r\n" headers in
     write_data socket request;
     c.status <- PrivConnected (source,socket)
   with
