@@ -365,23 +365,25 @@ let header_string source =
         ""
       else
         " "
-    in 
-    let f x y z =
-      Printf.sprintf "%s%s:%s%s\r\n" z x sep y
     in
-    let headers = Hashtbl.fold f source.headers "" in
     (* "content-type" seems to be in lower case
-     * for shoutcast. *)
-    let label = 
+     * for shoutcast. Also, it seems that
+     * it is good to pass it last, see:
+     *   http://forums.winamp.com/showthread.php?threadid=285035 *)
+    let content_label =
       if source.protocol = Icy then
         "content-type"
       else
-        "Content-Type" 
+        "Content-Type"
     in
-    (* Adding content-type last: seems to help for
-     * shoutcast. 
-     * See: http://forums.winamp.com/showthread.php?threadid=285035 *)
-    Printf.sprintf "%s%s:%s%s\r\n" headers label sep source.content_type
+    let f x y z =
+      Printf.sprintf "%s:%s%s" x sep y :: z
+    in
+    let headers = Hashtbl.fold f source.headers 
+                               (f content_label 
+                                  source.content_type []) 
+    in
+    String.concat "\r\n" headers
 
 let parse_http_answer s = 
   let f v c s =
