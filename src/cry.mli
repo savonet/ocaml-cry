@@ -35,11 +35,11 @@
 
 (** Possible errors. *)
 type error =
-  | Create 
-  | Connect
-  | Close
-  | Write
-  | Read
+  | Create of exn
+  | Connect of exn
+  | Close of exn
+  | Write of exn
+  | Read of exn
   | Busy 
   | Not_connected
   | Invalid_usage
@@ -49,7 +49,7 @@ type error =
 exception Error of error
 
 (** Get a string explaining an error. *)
-val string_of_error : error -> string
+val string_of_error : exn -> string
 
 (** Possible protocols. [Icy] is the (undocumented) shoutcast source protocol.
   * [Http] is the icecast2 source protocol. 

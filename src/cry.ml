@@ -21,37 +21,44 @@
  (** OCaml low level implementation of the shout source protocol. *)
 
 type error = 
-  | Create
-  | Connect
-  | Close
-  | Write
-  | Read
+  | Create of exn
+  | Connect of exn
+  | Close of exn
+  | Write of exn
+  | Read of exn
   | Busy
   | Not_connected
-  | Invalid_usage 
+  | Invalid_usage
   | Bad_answer of string option 
   | Http_answer of int*string*string
 
 exception Error of error
 
-let string_of_error e = 
-  match e with
-    | Create -> "could not initiate a new handler"
-    | Connect -> "could not connect to host"
-    | Write -> "could not write data to host"
-    | Read -> "could not read data from host"
-    | Close -> "could not close connection"
-    | Busy -> "busy"
-    | Not_connected -> "not connected"
-    | Invalid_usage -> "invalid usage"
-    | Bad_answer s -> 
-         Printf.sprintf "bad answer%s" 
-           (match s with
-              | Some s -> Printf.sprintf ": %s" s
-              | None   -> "")
-    | Http_answer (c,x,v) -> 
-       Printf.sprintf "%i, %s (HTTP/%s)" 
-                      c x v
+let rec string_of_error = 
+     function
+      | Error (Create e) -> pp "could not initiate a new handler" e
+      | Error (Connect e) -> pp "could not connect to host" e
+      | Error (Write e) -> pp "could not write data to host" e
+      | Error (Read e) -> pp "could not read data from host" e
+      | Error (Close e) -> pp "could not close connection" e
+      | Error Busy -> "busy"
+      | Error Not_connected -> "not connected"
+      | Error Invalid_usage -> "invalid usage"
+    (*  | Unix.unix_error (code,name,param) ->
+          Printf.sprintf "%s in %s(%s)" (Unix.error_message code)
+                                         name param *)
+      | Error (Bad_answer s) -> 
+           Printf.sprintf "bad answer%s" 
+             (match s with
+                | Some s -> Printf.sprintf ": %s" s
+                | None   -> "")
+      | Error (Http_answer (c,x,v)) -> 
+         Printf.sprintf "%i, %s (HTTP/%s)" 
+                       c x v
+      | e -> Printexc.to_string e
+and
+  pp s e =
+    Printf.sprintf "%s: %s" s (string_of_error e)
 
 type protocol = Icy | Http
 
@@ -104,7 +111,7 @@ let create_socket ?(ipv6=false) ?(timeout=30.) ?bind () =
     try
       Unix.socket domain Unix.SOCK_STREAM 0
     with
-      | _ -> raise (Error Create) 
+      | e -> raise (Error (Create e)) 
   in
   try
     Unix.setsockopt_float socket Unix.SO_RCVTIMEO timeout;
@@ -120,14 +127,14 @@ let create_socket ?(ipv6=false) ?(timeout=30.) ?bind () =
     end;
     socket
   with
-    | _ -> 
+    | e -> 
        begin
          try 
            Unix.close socket;
          with
            | _ -> ()
        end;
-       raise (Error Create)
+       raise (Error (Create e))
 
 let create ?(ipv6=false) ?timeout ?bind () = 
   { 
@@ -145,7 +152,7 @@ let close x =
       x.status <- PrivDisconnected
     with
       | Error _ as e -> raise e
-      | _ -> raise (Error Close)
+      | e -> raise (Error (Close e))
 
 let get_status c = 
   match c.status with
@@ -318,14 +325,17 @@ let write_data socket request =
     if rem > 0 then
       let ret = Unix.write socket request ofs rem in
       if ret = 0 then
-        raise (Error Write) ;
+        raise (Error 
+                (Write 
+                  (Failure "could not write data to \
+                           host"))) ;
       if ret < rem then
         write (ofs+ret)
   in
   try
     write 0
   with
-    | _ -> raise (Error Write)
+    | e -> raise (Error (Write e))
 
 let buf = String.create 1024
 
@@ -356,7 +366,7 @@ let read_data socket =
      else
        List.rev (f 0 [])
   with
-     | _ -> raise (Error Read) 
+     | e -> raise (Error (Read e)) 
 
 let header_string source =
     (* Icy headers are of the form: %s:%s *)
@@ -473,7 +483,7 @@ let connect_socket socket host port =
       socket
       (Unix.ADDR_INET((Unix.gethostbyname host).Unix.h_addr_list.(0),port))
   with
-    | _ -> raise (Error Connect)
+    | e -> raise (Error (Connect e))
  
 let connect c source =
   if c.status <> PrivDisconnected then
@@ -530,7 +540,7 @@ let manual_update_metadata
    try
     Unix.close socket
    with
-     | _ -> raise (Error Close)
+     | e -> raise (Error (Close e))
   in
   try
     connect_socket socket host port ;
