@@ -444,7 +444,8 @@ let connect_icy c socket source =
        Scanf.sscanf (List.hd ret) "%[^\r^\n]" f
      with
        | Scanf.Scan_failure s -> raise (Error (Bad_answer (Some s)))
-       | _ -> raise (Error (Bad_answer None))
+       | Error _ as e -> raise e
+       | e -> raise (Error (Bad_answer None))
     end;
     (* Read another line *)
     let ret = 

@@ -3,6 +3,8 @@
 * Addeded an exception parameters
   to propagate original exceptions
   when raising an internal's exception.
+* Fixed exception handling in ICY's answer
+  parsing.
 
 0.1.5 (2010-09-06)
 =====
