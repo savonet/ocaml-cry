@@ -2,7 +2,7 @@
 
 PROGNAME := ocaml-cry
 DISTFILES := CHANGES COPYING Makefile.in README \
-	bootstrap configure configure.ac \
+	bootstrap configure configure.ac m4/*.m4 \
 	src/*.ml src/*.mli src/Makefile.in src/META.in \
 	src/OCamlMakefile examples/Makefile.connect.in \
 	examples/*.ml examples/Makefile examples/OCamlMakefile
