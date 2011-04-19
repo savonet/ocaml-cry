@@ -114,11 +114,9 @@ type t
 (** Create a new handler.
   * 
   * [ipv6] is [false] by default.
-  * [timeout] is [30.] (seconds) by default.
   * [bind] is not used by default (system default). *)
 val create :
   ?ipv6:bool ->
-  ?timeout:float -> 
   ?bind:string -> unit -> t
 
 (** Get a handler's status *)
@@ -208,7 +206,8 @@ val manual_update_metadata :
            password:string ->
            mount:string ->
            ?headers:(string, string) Hashtbl.t ->
-           ?ipv6:bool -> ?bind:string -> metadata -> unit
+           ?ipv6:bool -> ?bind:string ->
+           metadata -> unit
 
 (** Send data to a source connection. 
   *

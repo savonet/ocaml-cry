@@ -95,7 +95,6 @@ type t =
   { 
     ipv6            : bool;
     bind            : string option;
-    timeout         : float option;
     mutable icy_cap : bool;
     mutable status  : status_priv
   }
@@ -105,7 +104,7 @@ let get_socket x =
     | PrivConnected (_,s) -> s
     | PrivDisconnected -> raise (Error Not_connected)
 
-let create_socket ?(ipv6=false) ?(timeout=30.) ?bind () = 
+let create_socket ?(ipv6=false) ?bind () = 
   let domain = if ipv6 then Unix.PF_INET6 else Unix.PF_INET in
   let socket = 
     try
@@ -114,8 +113,6 @@ let create_socket ?(ipv6=false) ?(timeout=30.) ?bind () =
       | e -> raise (Error (Create e)) 
   in
   try
-    Unix.setsockopt_float socket Unix.SO_RCVTIMEO timeout;
-    Unix.setsockopt_float socket Unix.SO_SNDTIMEO timeout;
     begin
      match bind with
        | None -> ()
@@ -130,24 +127,26 @@ let create_socket ?(ipv6=false) ?(timeout=30.) ?bind () =
     | e -> 
        begin
          try 
+           Unix.shutdown socket Unix.SHUTDOWN_ALL ;
            Unix.close socket;
          with
            | _ -> ()
        end;
        raise (Error (Create e))
 
-let create ?(ipv6=false) ?timeout ?bind () = 
+let create ?(ipv6=false) ?bind () = 
   { 
     ipv6    = ipv6;
     bind    = bind;
-    timeout = timeout;
     icy_cap = false;
     status  = PrivDisconnected
   }
 
 let close x =
     try
-      Unix.close (get_socket x);
+      let s = get_socket x in
+      Unix.shutdown s Unix.SHUTDOWN_ALL ;
+      Unix.close s;
       x.icy_cap <- false;
       x.status <- PrivDisconnected
     with
@@ -493,7 +492,6 @@ let connect c source =
     if source.protocol = Icy then source.port+1 else source.port 
   in
   let socket = create_socket ~ipv6:c.ipv6
-                             ?timeout:c.timeout
                              ?bind:c.bind ()
   in
   try
@@ -507,6 +505,7 @@ let connect c source =
     | e -> 
        begin
         try
+         Unix.shutdown socket Unix.SHUTDOWN_ALL ;
          Unix.close socket
         with
           | _ -> ()
@@ -523,7 +522,7 @@ let icy_meta_request =
 
 let manual_update_metadata 
        ~host ~port ~protocol ~user ~password 
-       ~mount ?headers ?(ipv6=false) 
+       ~mount ?headers ?(ipv6=false)
        ?bind m =
   let mount = 
     if mount.[0] <> '/' then
@@ -539,6 +538,7 @@ let manual_update_metadata
   let socket = create_socket ~ipv6 ?bind () in
   let close () = 
    try
+    Unix.shutdown socket Unix.SHUTDOWN_ALL ;
     Unix.close socket
    with
      | e -> raise (Error (Close e))
