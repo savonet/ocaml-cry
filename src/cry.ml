@@ -87,9 +87,15 @@ type audio_info = (string,string) Hashtbl.t
 
 type metadata = (string,string) Hashtbl.t
 
-type status_priv = PrivConnected of (connection*Unix.file_descr) | PrivDisconnected 
+(* Metadata socket is only present if icy_cap is true *)
+type connection_data = 
+  { connection      : connection;
+    data_socket     : Unix.file_descr;
+    metadata_socket : Unix.file_descr option }  
 
-type status = Connected of connection | Disconnected
+type status_priv = PrivConnected of connection_data | PrivDisconnected 
+
+type status = Connected of connection_data | Disconnected
 
 type t = 
   { 
@@ -99,9 +105,9 @@ type t =
     mutable status  : status_priv
   }
 
-let get_socket x = 
+let get_connection_data x =
   match x.status with
-    | PrivConnected (_,s) -> s
+    | PrivConnected d -> d
     | PrivDisconnected -> raise (Error Not_connected)
 
 let create_socket ?(ipv6=false) ?bind () = 
@@ -126,13 +132,18 @@ let create_socket ?(ipv6=false) ?bind () =
   with
     | e -> 
        begin
-         try 
-           Unix.shutdown socket Unix.SHUTDOWN_ALL ;
-           Unix.close socket;
+         try
+           Unix.shutdown socket Unix.SHUTDOWN_ALL;
+           Unix.close socket
          with
            | _ -> ()
        end;
        raise (Error (Create e))
+
+let create_metadata_socket ?(ipv6=false) ?bind () =
+  let s = create_socket ~ipv6 ?bind () in
+  Unix.setsockopt s Unix.SO_REUSEADDR true;
+  s
 
 let create ?(ipv6=false) ?bind () = 
   { 
@@ -144,9 +155,15 @@ let create ?(ipv6=false) ?bind () =
 
 let close x =
     try
-      let s = get_socket x in
-      Unix.shutdown s Unix.SHUTDOWN_ALL ;
-      Unix.close s;
+      let c = get_connection_data x in
+      Unix.shutdown c.data_socket Unix.SHUTDOWN_ALL;
+      Unix.close c.data_socket ;
+      begin
+        match c.metadata_socket with
+          | None -> ()
+          (* metadata socket is shutdown after each metadata update. *)
+          | Some s -> Unix.close s
+      end ;
       x.icy_cap <- false;
       x.status <- PrivDisconnected
     with
@@ -155,7 +172,7 @@ let close x =
 
 let get_status c = 
   match c.status with
-    | PrivConnected (x,_) -> Connected x
+    | PrivConnected d -> Connected d
     | PrivDisconnected -> Disconnected
 
 let get_icy_cap c = c.icy_cap 
@@ -312,7 +329,7 @@ let url_encode s =
  do_url_encode s ""
 
 let http_header =
-  Printf.sprintf "SOURCE %s HTTP/1.1\r\n%s\r\n\r\n"
+  Printf.sprintf "SOURCE %s HTTP/1.0\r\n%s\r\n\r\n"
 
 let get_auth user password = 
   Printf.sprintf "Basic %s" (encode64 (user ^ ":" ^ password))
@@ -416,8 +433,16 @@ let connect_http c socket source =
     let (v,code,s) = parse_http_answer (List.hd ret) in
     if code < 200 || code >= 300 then
       raise (Error (Http_answer (code,s,v)));
-    c.icy_cap <- true; 
-    c.status <- PrivConnected (source,socket)
+    c.icy_cap <- true;
+    let metadata_socket = 
+      Some (create_metadata_socket
+                    ~ipv6:c.ipv6 
+                    ?bind:c.bind ())
+    in
+    c.status <- 
+      PrivConnected { connection = source;
+                      data_socket = socket;
+                      metadata_socket = metadata_socket }
   with
     | e -> 
        begin
@@ -465,7 +490,18 @@ let connect_icy c socket source =
     let headers = header_string source in
     let request = Printf.sprintf "%s\r\n\r\n" headers in
     write_data socket request;
-    c.status <- PrivConnected (source,socket)
+    let metadata_socket = 
+      if c.icy_cap then
+        Some (create_metadata_socket 
+                         ~ipv6:c.ipv6 
+                         ?bind:c.bind ())
+      else
+        None
+    in
+    c.status <- 
+      PrivConnected { connection = source;
+                      data_socket = socket;
+                      metadata_socket = metadata_socket }
   with
     | e ->
        begin
@@ -505,7 +541,7 @@ let connect c source =
     | e -> 
        begin
         try
-         Unix.shutdown socket Unix.SHUTDOWN_ALL ;
+         Unix.shutdown socket Unix.SHUTDOWN_ALL;
          Unix.close socket
         with
           | _ -> ()
@@ -523,7 +559,7 @@ let icy_meta_request =
 let manual_update_metadata 
        ~host ~port ~protocol ~user ~password 
        ~mount ?headers ?(ipv6=false)
-       ?bind m =
+       ?bind ?socket m =
   let mount = 
     if mount.[0] <> '/' then
       "/" ^ mount
@@ -535,13 +571,19 @@ let manual_update_metadata
       | Some x -> x
       | None   -> Hashtbl.create 0
   in
-  let socket = create_socket ~ipv6 ?bind () in
+  let socket,close = 
+    match socket with
+      | Some s -> s,false
+      | None   -> create_socket ~ipv6 ?bind (),true
+  in
   let close () = 
-   try
-    Unix.shutdown socket Unix.SHUTDOWN_ALL ;
-    Unix.close socket
-   with
-     | e -> raise (Error (Close e))
+    try
+      Unix.shutdown socket Unix.SHUTDOWN_ALL;
+      (* Only close if we created the socket. *)
+      if close then
+        Unix.close socket
+    with
+      | e -> raise (Error (Close e))
   in
   try
     connect_socket socket host port ;
@@ -597,13 +639,16 @@ let manual_update_metadata
        raise e
 
 let update_metadata c m = 
-  let source =                                                              
-    match c.status with                                                     
-      | PrivConnected (x,_) -> x                                            
-      | _ -> raise (Error Not_connected) 
-  in
   if not c.icy_cap then                                                     
     raise (Error Invalid_usage);
+  let data = get_connection_data c in
+  let source = data.connection in
+  let socket = 
+    match data.metadata_socket with
+      | Some s -> s
+      | None   -> (* This should not happen *)
+                  assert false
+  in
   let user = source.user in
   let port = source.port in
   let password = source.password in
@@ -611,15 +656,13 @@ let update_metadata c m =
   let protocol = source.protocol in
   let mount = source.mount in
   let host = source.host in
-  let ipv6 = c.ipv6 in
-  let bind = c.bind in
   manual_update_metadata 
        ~host ~port ~protocol 
        ~user ~password
        ~mount ?headers 
-       ~ipv6 ?bind m
+       ~socket m
 
 let send c x =
-  let socket = get_socket c in
-  write_data socket x
+  let c = get_connection_data c in
+  write_data c.data_socket x
 

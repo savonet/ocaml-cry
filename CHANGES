@@ -1,13 +1,15 @@
-0.1.6 ()
+0.2.0 ()
 =====
 * Addeded an exception parameters
   to propagate original exceptions
   when raising an internal's exception.
 * Fixed exception handling in ICY's answer
   parsing.
-* Remove buggy timeout option. 
+* Remove buggy timeout option.
 * Use Unix.shutdown before closing a network
-  socket.
+  socket. 
+* Reuse the same socket when performing
+  metadata updates.
 
 0.1.5 (2010-09-06)
 =====
