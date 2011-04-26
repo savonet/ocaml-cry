@@ -103,11 +103,10 @@ type audio_info = (string, string) Hashtbl.t
 (** Type for metadata values. *)
 type metadata = (string,string) Hashtbl.t
 
-(* Metadata socket is only present if icy_cap is true *)
+(* Type for connection data *)
 type connection_data =
   { connection      : connection;
-    data_socket     : Unix.file_descr;
-    metadata_socket : Unix.file_descr option }
+    data_socket     : Unix.file_descr }
 
 (** Type for the status of a handler. *)
 type status = Connected of connection_data | Disconnected 
@@ -203,11 +202,6 @@ val update_metadata : t -> metadata -> unit
 (** Manually update metadata on any source without necessarily
   * being connected to it for streaming.
   * 
-  * If [socket] parameter is not used a fresh socket
-  * is created. [ipv6] and [bind] parameters are only
-  * used for this case. By default [ipv6] is false and
-  * [bind] is not used.
-  *
   * Use it only if you know what you are doing ! *)
 val manual_update_metadata :  
            host:string ->
@@ -218,7 +212,6 @@ val manual_update_metadata :
            mount:string ->
            ?headers:(string, string) Hashtbl.t ->
            ?ipv6:bool -> ?bind:string ->
-           ?socket:Unix.file_descr -> 
            metadata -> unit
 
 (** Send data to a source connection. 
