@@ -90,8 +90,7 @@ type metadata = (string,string) Hashtbl.t
 (* Metadata socket is only present if icy_cap is true *)
 type connection_data = 
   { connection      : connection;
-    data_socket     : Unix.file_descr;
-    metadata_socket : Unix.file_descr option }  
+    data_socket     : Unix.file_descr }
 
 type status_priv = PrivConnected of connection_data | PrivDisconnected 
 
@@ -133,17 +132,11 @@ let create_socket ?(ipv6=false) ?bind () =
     | e -> 
        begin
          try
-           Unix.shutdown socket Unix.SHUTDOWN_ALL;
            Unix.close socket
          with
            | _ -> ()
        end;
        raise (Error (Create e))
-
-let create_metadata_socket ?(ipv6=false) ?bind () =
-  let s = create_socket ~ipv6 ?bind () in
-  Unix.setsockopt s Unix.SO_REUSEADDR true;
-  s
 
 let create ?(ipv6=false) ?bind () = 
   { 
@@ -156,14 +149,7 @@ let create ?(ipv6=false) ?bind () =
 let close x =
     try
       let c = get_connection_data x in
-      Unix.shutdown c.data_socket Unix.SHUTDOWN_ALL;
       Unix.close c.data_socket ;
-      begin
-        match c.metadata_socket with
-          | None -> ()
-          (* metadata socket is shutdown after each metadata update. *)
-          | Some s -> Unix.close s
-      end ;
       x.icy_cap <- false;
       x.status <- PrivDisconnected
     with
@@ -434,15 +420,9 @@ let connect_http c socket source =
     if code < 200 || code >= 300 then
       raise (Error (Http_answer (code,s,v)));
     c.icy_cap <- true;
-    let metadata_socket = 
-      Some (create_metadata_socket
-                    ~ipv6:c.ipv6 
-                    ?bind:c.bind ())
-    in
     c.status <- 
       PrivConnected { connection = source;
-                      data_socket = socket;
-                      metadata_socket = metadata_socket }
+                      data_socket = socket }
   with
     | e -> 
        begin
@@ -490,18 +470,9 @@ let connect_icy c socket source =
     let headers = header_string source in
     let request = Printf.sprintf "%s\r\n\r\n" headers in
     write_data socket request;
-    let metadata_socket = 
-      if c.icy_cap then
-        Some (create_metadata_socket 
-                         ~ipv6:c.ipv6 
-                         ?bind:c.bind ())
-      else
-        None
-    in
     c.status <- 
       PrivConnected { connection = source;
-                      data_socket = socket;
-                      metadata_socket = metadata_socket }
+                      data_socket = socket }
   with
     | e ->
        begin
@@ -515,8 +486,8 @@ let connect_icy c socket source =
 (** This function does *not* close the socket in case of error.. *)   
 let connect_socket socket host port = 
   try
-    Unix.connect
-      socket
+    Unix.connect 
+      socket 
       (Unix.ADDR_INET((Unix.gethostbyname host).Unix.h_addr_list.(0),port))
   with
     | e -> raise (Error (Connect e))
@@ -541,7 +512,6 @@ let connect c source =
     | e -> 
        begin
         try
-         Unix.shutdown socket Unix.SHUTDOWN_ALL;
          Unix.close socket
         with
           | _ -> ()
@@ -559,7 +529,7 @@ let icy_meta_request =
 let manual_update_metadata 
        ~host ~port ~protocol ~user ~password 
        ~mount ?headers ?(ipv6=false)
-       ?bind ?socket m =
+       ?bind m =
   let mount = 
     if mount.[0] <> '/' then
       "/" ^ mount
@@ -571,22 +541,15 @@ let manual_update_metadata
       | Some x -> x
       | None   -> Hashtbl.create 0
   in
-  let socket,close = 
-    match socket with
-      | Some s -> s,false
-      | None   -> create_socket ~ipv6 ?bind (),true
-  in
+  let socket = create_socket ~ipv6 ?bind () in
   let close () = 
     try
-      Unix.shutdown socket Unix.SHUTDOWN_ALL;
-      (* Only close if we created the socket. *)
-      if close then
-        Unix.close socket
+      Unix.close socket
     with
       | e -> raise (Error (Close e))
   in
   try
-    connect_socket socket host port ;
+    connect_socket socket host port;
     let user_agent =
       try
         Hashtbl.find headers "User-Agent"
@@ -643,12 +606,6 @@ let update_metadata c m =
     raise (Error Invalid_usage);
   let data = get_connection_data c in
   let source = data.connection in
-  let socket = 
-    match data.metadata_socket with
-      | Some s -> s
-      | None   -> (* This should not happen *)
-                  assert false
-  in
   let user = source.user in
   let port = source.port in
   let password = source.password in
@@ -660,7 +617,7 @@ let update_metadata c m =
        ~host ~port ~protocol 
        ~user ~password
        ~mount ?headers 
-       ~socket m
+       m
 
 let send c x =
   let c = get_connection_data c in

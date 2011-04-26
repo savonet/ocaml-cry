@@ -6,10 +6,6 @@
 * Fixed exception handling in ICY's answer
   parsing.
 * Remove buggy timeout option.
-* Use Unix.shutdown before closing a network
-  socket. 
-* Reuse the same socket when performing
-  metadata updates.
 
 0.1.5 (2010-09-06)
 =====
