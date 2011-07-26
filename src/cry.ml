@@ -33,6 +33,7 @@ type error =
   | Http_answer of int*string*string
 
 exception Error of error
+exception Timeout
 
 let rec string_of_error = 
      function
@@ -47,6 +48,7 @@ let rec string_of_error =
     (*  | Unix.unix_error (code,name,param) ->
           Printf.sprintf "%s in %s(%s)" (Unix.error_message code)
                                          name param *)
+      | Timeout -> "connection timeout"
       | Error (Bad_answer s) -> 
            Printf.sprintf "bad answer%s" 
              (match s with
@@ -99,6 +101,7 @@ type status = Connected of connection_data | Disconnected
 type t = 
   { 
     ipv6            : bool;
+    timeout         : float;
     bind            : string option;
     mutable icy_cap : bool;
     mutable status  : status_priv
@@ -138,9 +141,10 @@ let create_socket ?(ipv6=false) ?bind () =
        end;
        raise (Error (Create e))
 
-let create ?(ipv6=false) ?bind () = 
+let create ?(ipv6=false) ?bind ?(timeout=30.) () = 
   { 
     ipv6    = ipv6;
+    timeout = timeout;
     bind    = bind;
     icy_cap = false;
     status  = PrivDisconnected
@@ -320,17 +324,34 @@ let http_header =
 let get_auth user password = 
   Printf.sprintf "Basic %s" (encode64 (user ^ ":" ^ password))
 
-let write_data socket request =
+(* Returns [false] if delay has been expired
+ * while waiting for the requested operation. *)
+let wait_for operation delay s = 
+  let events () =
+   match operation with 
+     | `Read -> 
+          Unix.select [s] [] [] delay
+     | `Write ->
+          Unix.select [] [s] [] delay
+     | `Both ->
+          Unix.select [s] [s] [] delay
+  in
+  let r,w,_ = events () in
+  match operation with
+    | `Read -> r <> []
+    | `Write -> w <> []
+    | `Both -> r <> [] || w <> []
+
+let write_data ~timeout socket request =
   let len = String.length request in
   let rec write ofs =
+    if not (wait_for `Write timeout socket) then
+      raise Timeout ; 
     let rem = len - ofs in
     if rem > 0 then
       let ret = Unix.write socket request ofs rem in
       if ret = 0 then
-        raise (Error 
-                (Write 
-                  (Failure "could not write data to \
-                           host"))) ;
+        raise (Failure "connection closed.") ;
       if ret < rem then
         write (ofs+ret)
   in
@@ -345,7 +366,11 @@ let buf = String.create 1024
   * There should always be at least
   * one element in the resulting list.
   * If not, something bad happened. *)
-let read_data socket =
+(* TODO: review all reading code as this 
+ * seems a bit ad-hoc/naive.. *)
+let read_data ~timeout socket =
+  if not (wait_for `Read timeout socket) then
+    raise Timeout ;
   try
      let ret = Unix.read socket buf 0 1024 in
      (* split data *)
@@ -413,9 +438,9 @@ let connect_http c socket source =
     Hashtbl.add source.headers "Authorization" auth;
     let headers = header_string source in
     let request = http_header source.mount headers in
-    write_data socket request;
+    write_data ~timeout:c.timeout socket request;
     (** Read input from socket. *)
-    let ret = read_data socket in 
+    let ret = read_data ~timeout:c.timeout socket in 
     let (v,code,s) = parse_http_answer (List.hd ret) in
     if code < 200 || code >= 300 then
       raise (Error (Http_answer (code,s,v)));
@@ -436,9 +461,9 @@ let connect_http c socket source =
 let connect_icy c socket source = 
   let request = Printf.sprintf "%s\r\n" source.password in
   try
-    write_data socket request;
+    write_data ~timeout:c.timeout socket request;
     (** Read input from socket. *)
-    let ret = read_data socket in
+    let ret = read_data ~timeout:c.timeout socket in
     let f s =
       if s.[0] <> 'O' && s.[1] <> 'K' then
         raise (Error (Bad_answer (Some s)));
@@ -455,7 +480,7 @@ let connect_icy c socket source =
     let ret = 
       match ret with
         | x :: y :: _ -> y
-        | _ -> List.hd (read_data socket)
+        | _ -> List.hd (read_data ~timeout:c.timeout socket)
     in
     let f s =
       c.icy_cap <- true
@@ -469,7 +494,7 @@ let connect_icy c socket source =
     (* Now Write headers *)
     let headers = header_string source in
     let request = Printf.sprintf "%s\r\n\r\n" headers in
-    write_data socket request;
+    write_data ~timeout:c.timeout socket request;
     c.status <- 
       PrivConnected { connection = source;
                       data_socket = socket }
@@ -528,7 +553,7 @@ let icy_meta_request =
 
 let manual_update_metadata 
        ~host ~port ~protocol ~user ~password 
-       ~mount ?headers ?(ipv6=false)
+       ~mount ?(timeout=30.) ?headers ?(ipv6=false)
        ?bind m =
   let mount = 
     if mount.[0] <> '/' then
@@ -584,9 +609,9 @@ let manual_update_metadata
             http_meta_request mount meta headers
         | Icy -> icy_meta_request password meta user_agent
     in
-    write_data socket request;
+    write_data ~timeout socket request;
     (** Read input from socket. *)
-    let ret = read_data socket in
+    let ret = read_data ~timeout socket in
     let (v,code,s) = parse_http_answer (List.hd ret) in
     if code <> 200 then
       raise (Error (Http_answer (code,s,v)));
@@ -613,13 +638,14 @@ let update_metadata c m =
   let protocol = source.protocol in
   let mount = source.mount in
   let host = source.host in
+  let timeout = c.timeout in
   manual_update_metadata 
        ~host ~port ~protocol 
-       ~user ~password
-       ~mount ?headers 
+       ~user ~password ~timeout
+       ~mount ?headers
        m
 
 let send c x =
-  let c = get_connection_data c in
-  write_data c.data_socket x
+  let d = get_connection_data c in
+  write_data ~timeout:c.timeout d.data_socket x
 
