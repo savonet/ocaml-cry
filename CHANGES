@@ -1,4 +1,4 @@
-0.2.1 ()
+0.2.1 (2011-08-04)
 =====
 * Implemented a proper connection
   timeout mechanism.
