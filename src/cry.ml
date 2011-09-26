@@ -100,11 +100,12 @@ type status = Connected of connection_data | Disconnected
 
 type t = 
   { 
-    ipv6            : bool;
-    timeout         : float;
-    bind            : string option;
-    mutable icy_cap : bool;
-    mutable status  : status_priv
+    ipv6               : bool;
+    timeout            : float;
+    connection_timeout : float;
+    bind               : string option;
+    mutable icy_cap    : bool;
+    mutable status     : status_priv
   }
 
 let get_connection_data x =
@@ -141,13 +142,14 @@ let create_socket ?(ipv6=false) ?bind () =
        end;
        raise (Error (Create e))
 
-let create ?(ipv6=false) ?bind ?(timeout=30.) () = 
+let create ?(ipv6=false) ?bind ?(connection_timeout=5.) ?(timeout=30.) () = 
   { 
-    ipv6    = ipv6;
-    timeout = timeout;
-    bind    = bind;
-    icy_cap = false;
-    status  = PrivDisconnected
+    ipv6               = ipv6;
+    timeout            = timeout;
+    connection_timeout = connection_timeout;
+    bind               = bind;
+    icy_cap            = false;
+    status             = PrivDisconnected
   }
 
 let close x =
@@ -509,12 +511,28 @@ let connect_icy c socket source =
        raise e
 
 (** This function does *not* close the socket in case of error.. *)   
-let connect_socket socket host port = 
+let connect_socket ?timeout socket host port = 
+  let do_timeout = timeout <> None in
   try
+    if do_timeout then
+      Unix.set_nonblock socket ;
     Unix.connect 
       socket 
-      (Unix.ADDR_INET((Unix.gethostbyname host).Unix.h_addr_list.(0),port))
+      (Unix.ADDR_INET((Unix.gethostbyname host).Unix.h_addr_list.(0),port)) ;
+    if do_timeout then
+      Unix.clear_nonblock socket ;
   with
+    | Unix.Unix_error(Unix.EINPROGRESS, _, _) ->
+       begin
+        match timeout with
+          | Some timeout ->
+              (* Block in a select call for [timeout] seconds. *)
+              let r, _, _ = Unix.select [socket] [] [] timeout in
+              if r = [] then
+                raise (Error (Connect Timeout)) ;
+              Unix.clear_nonblock socket
+          | None -> assert false
+       end
     | e -> raise (Error (Connect e))
  
 let connect c source =
@@ -527,7 +545,7 @@ let connect c source =
                              ?bind:c.bind ()
   in
   try
-    connect_socket socket source.host port;
+    connect_socket ~timeout:c.connection_timeout socket source.host port;
     (* We do not know icy capabilities so far.. *)
     c.icy_cap <- false;
     match source.protocol with
@@ -553,7 +571,7 @@ let icy_meta_request =
 
 let manual_update_metadata 
        ~host ~port ~protocol ~user ~password 
-       ~mount ?(timeout=30.) ?headers ?(ipv6=false)
+       ~mount ?(connection_timeout=5.) ?(timeout=30.) ?headers ?(ipv6=false)
        ?bind m =
   let mount = 
     if mount.[0] <> '/' then
@@ -574,7 +592,7 @@ let manual_update_metadata
       | e -> raise (Error (Close e))
   in
   try
-    connect_socket socket host port;
+    connect_socket ~timeout:connection_timeout socket host port;
     let user_agent =
       try
         Hashtbl.find headers "User-Agent"
@@ -639,10 +657,11 @@ let update_metadata c m =
   let mount = source.mount in
   let host = source.host in
   let timeout = c.timeout in
+  let connection_timeout = c.connection_timeout in
   manual_update_metadata 
        ~host ~port ~protocol 
        ~user ~password ~timeout
-       ~mount ?headers
+       ~mount ?headers ~connection_timeout
        m
 
 let send c x =

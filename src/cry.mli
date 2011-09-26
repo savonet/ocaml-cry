@@ -123,7 +123,8 @@ type t
   * [timeout] is [30.] by default. *)
 val create :
   ?ipv6:bool ->
-  ?bind:string -> 
+  ?bind:string ->
+  ?connection_timeout:float -> 
   ?timeout:float -> unit -> t
 
 (** Get a handler's status *)
@@ -214,6 +215,7 @@ val manual_update_metadata :
            user:string ->
            password:string ->
            mount:string ->
+           ?connection_timeout:float ->
            ?timeout:float ->
            ?headers:(string, string) Hashtbl.t ->
            ?ipv6:bool -> ?bind:string ->
