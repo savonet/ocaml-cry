@@ -102,7 +102,7 @@ type t =
   { 
     ipv6               : bool;
     timeout            : float;
-    connection_timeout : float;
+    connection_timeout : float option;
     bind               : string option;
     mutable icy_cap    : bool;
     mutable status     : status_priv
@@ -142,7 +142,7 @@ let create_socket ?(ipv6=false) ?bind () =
        end;
        raise (Error (Create e))
 
-let create ?(ipv6=false) ?bind ?(connection_timeout=5.) ?(timeout=30.) () = 
+let create ?(ipv6=false) ?bind ?connection_timeout ?(timeout=30.) () = 
   { 
     ipv6               = ipv6;
     timeout            = timeout;
@@ -520,15 +520,15 @@ let connect_socket ?timeout socket host port =
       socket 
       (Unix.ADDR_INET((Unix.gethostbyname host).Unix.h_addr_list.(0),port)) ;
     if do_timeout then
-      Unix.clear_nonblock socket ;
+      Unix.clear_nonblock socket
   with
     | Unix.Unix_error(Unix.EINPROGRESS, _, _) ->
        begin
         match timeout with
           | Some timeout ->
               (* Block in a select call for [timeout] seconds. *)
-              let r, _, _ = Unix.select [socket] [] [] timeout in
-              if r = [] then
+              let _, w, _ = Unix.select [] [socket] [] timeout in
+              if w = [] then
                 raise (Error (Connect Timeout)) ;
               Unix.clear_nonblock socket
           | None -> assert false
@@ -545,7 +545,7 @@ let connect c source =
                              ?bind:c.bind ()
   in
   try
-    connect_socket ~timeout:c.connection_timeout socket source.host port;
+    connect_socket ?timeout:c.connection_timeout socket source.host port;
     (* We do not know icy capabilities so far.. *)
     c.icy_cap <- false;
     match source.protocol with
@@ -661,7 +661,7 @@ let update_metadata c m =
   manual_update_metadata 
        ~host ~port ~protocol 
        ~user ~password ~timeout
-       ~mount ?headers ~connection_timeout
+       ~mount ?headers ?connection_timeout
        m
 
 let send c x =
