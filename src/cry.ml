@@ -563,7 +563,7 @@ let connect c source =
 
 let http_meta_request = 
   Printf.sprintf 
-    "GET /admin/metadata?mode=updinfo&mount=%s%s HTTP/1.0\r\n%s\r\n"
+    "GET /admin/metadata?mode=updinfo&mount=%s%s%s HTTP/1.0\r\n%s\r\n"
 
 let icy_meta_request = 
   Printf.sprintf 
@@ -572,7 +572,7 @@ let icy_meta_request =
 let manual_update_metadata 
        ~host ~port ~protocol ~user ~password 
        ~mount ?(connection_timeout=5.) ?(timeout=30.) ?headers ?(ipv6=false)
-       ?bind m =
+       ?bind ?charset m =
   let mount = 
     if mount.[0] <> '/' then
       "/" ^ mount
@@ -606,6 +606,11 @@ let manual_update_metadata
       else
         ""
     in
+    let charset = 
+      match charset with
+        | Some c -> Printf.sprintf "&charset=%s" c
+        | None   -> ""
+    in
     let user_agent = 
       Printf.sprintf "User-Agent: %s%s\r\n" user_agent agent_complement
     in
@@ -624,7 +629,7 @@ let manual_update_metadata
             let headers = 
               Printf.sprintf "Authorization: %s\r\n%s" (get_auth user password) user_agent
             in
-            http_meta_request mount meta headers
+            http_meta_request mount charset meta headers
         | Icy -> icy_meta_request password meta user_agent
     in
     write_data ~timeout socket request;
@@ -644,7 +649,7 @@ let manual_update_metadata
        end ;
        raise e
 
-let update_metadata c m = 
+let update_metadata ?charset c m = 
   if not c.icy_cap then                                                     
     raise (Error Invalid_usage);
   let data = get_connection_data c in
@@ -662,7 +667,7 @@ let update_metadata c m =
        ~host ~port ~protocol 
        ~user ~password ~timeout
        ~mount ?headers ?connection_timeout
-       m
+       ?charset m
 
 let send c x =
   let d = get_connection_data c in

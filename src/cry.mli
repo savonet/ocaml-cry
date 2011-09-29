@@ -200,7 +200,7 @@ val connect : t -> connection -> unit
   *
   * Raises: [Error Not_connected]
   * if not connected. *)
-val update_metadata : t -> metadata -> unit
+val update_metadata : ?charset:string -> t -> metadata -> unit
 
 (** Manually update metadata on any source without necessarily
   * being connected to it for streaming.
@@ -219,7 +219,8 @@ val manual_update_metadata :
            ?timeout:float ->
            ?headers:(string, string) Hashtbl.t ->
            ?ipv6:bool -> ?bind:string ->
-           metadata -> unit
+           ?charset:string -> metadata -> 
+           unit
 
 (** Send data to a source connection. 
   *
