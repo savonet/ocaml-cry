@@ -512,7 +512,7 @@ let connect_icy c socket source =
 
 (** This function does *not* close the socket in case of error.. *)   
 let connect_socket ?timeout socket host port = 
-  let do_timeout = timeout <> None && Sys.os_type <> "Win32" in
+  let do_timeout = timeout <> None in
   try
     if do_timeout then
       Unix.set_nonblock socket ;
@@ -522,7 +522,8 @@ let connect_socket ?timeout socket host port =
     if do_timeout then
       Unix.clear_nonblock socket
   with
-    | Unix.Unix_error(Unix.EINPROGRESS, _, _) ->
+    | Unix.Unix_error(Unix.EINPROGRESS, _, _) 
+    | Unix.Unix_error(Unix.EWOULDBLOCK, _, _) when Sys.os_type = "Win32" ->
        begin
         match timeout with
           | Some timeout ->
