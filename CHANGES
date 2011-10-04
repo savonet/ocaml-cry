@@ -1,9 +1,7 @@
-0.2.2 ()
+0.2.2 (04-10-2011)
 =====
-* Added a second timeout parameter used
-  when connecting to the remote host.
-* Now passing a charset= parameter for icecast2
-  ICY metadata updated.
+* Add second timeout parameters for connection attempts.
+* New optional charset parameter for ICY metadata updates.
 
 0.2.1 (2011-08-04)
 =====
