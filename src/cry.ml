@@ -520,7 +520,7 @@ let connect_socket ?timeout socket host port =
          let _, w, _ = Unix.select [] [socket] [] timeout in
          if w = [] then
            raise (Error (Connect Timeout)) ;
-           Unix.clear_nonblock socket
+         Unix.clear_nonblock socket
        | None -> assert false
   in
   try
