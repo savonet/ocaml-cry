@@ -59,6 +59,9 @@ val string_of_error : exn -> string
   * provided you set the correct content-type (mime) for the source. *)
 type protocol = Icy | Http
 
+(** Return a string representation of a protocol. *)
+val string_of_protocol : protocol -> string
+
 (** Special type for content-type (mime) data. *)
 type content_type
 
@@ -95,6 +98,9 @@ type connection =
     protocol     : protocol;
     headers      : (string, string) Hashtbl.t
   }
+
+(** Returns a JSON string representation of a connection. *)
+val string_of_connection : connection -> string
 
 (** Type for audio informations. Used for connection headers.
   * See [audio_info] function for more details. *)

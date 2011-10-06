@@ -64,6 +64,10 @@ and
 
 type protocol = Icy | Http
 
+let string_of_protocol = function
+  | Icy  -> "icy"
+  | Http -> "http"
+
 type content_type = string
 
 let ogg_application = "application/ogg"
@@ -84,6 +88,26 @@ type connection =
     protocol     : protocol;
     headers      : (string,string) Hashtbl.t
   }
+
+let string_of_connection c = 
+  Printf.sprintf 
+    "{ \"mount\": %S,\n\
+       \"user\":  %S,\n\
+       \"password\": %S,\n\
+       \"host\": %S,\n\
+       \"port\": %d,\n\
+       \"content_type\": %S,\n\
+       \"protocol\": %S,\n\
+       \"headers\": { %s } }"
+     c.mount
+     c.user
+     c.password
+     c.host
+     c.port
+     (string_of_content_type c.content_type)
+     (string_of_protocol c.protocol)
+     (Hashtbl.fold (fun x y z -> Printf.sprintf "%S: %S,\n%s" x y z)
+                   c.headers "")
 
 type audio_info = (string,string) Hashtbl.t 
 
