@@ -2,6 +2,8 @@
 =====
 * Add second timeout parameters for connection attempts.
 * New optional charset parameter for ICY metadata updates.
+* Added new functions [string_of_protocol] and 
+  [string_of_connection]
 
 0.2.1 (2011-08-04)
 =====
