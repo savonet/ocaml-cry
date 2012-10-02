@@ -16,3 +16,4 @@ src/*.a
 src/*.cm*
 src/*.o
 src/*.so
+examples/Makefile.connect
