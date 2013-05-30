@@ -125,10 +125,12 @@ type t
 (** Create a new handler.
   * 
   * [ipv6] is [false] by default.
+  * [chunked] ([false] by default) indicate that data should be sent using HTTP/1.1 chunked transfer encoding.
   * [bind] is not used by default (system default). 
   * [timeout] is [30.] by default. *)
 val create :
   ?ipv6:bool ->
+  ?chunked:bool ->
   ?bind:string ->
   ?connection_timeout:float -> 
   ?timeout:float -> unit -> t

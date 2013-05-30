@@ -129,7 +129,8 @@ type t =
     connection_timeout : float option;
     bind               : string option;
     mutable icy_cap    : bool;
-    mutable status     : status_priv
+    mutable status     : status_priv;
+    chunked            : bool;
   }
 
 let get_connection_data x =
@@ -166,14 +167,15 @@ let create_socket ?(ipv6=false) ?bind () =
        end;
        raise (Error (Create e))
 
-let create ?(ipv6=false) ?bind ?connection_timeout ?(timeout=30.) () = 
+let create ?(ipv6=false) ?(chunked=false) ?bind ?connection_timeout ?(timeout=30.) () = 
   { 
     ipv6               = ipv6;
     timeout            = timeout;
     connection_timeout = connection_timeout;
     bind               = bind;
     icy_cap            = false;
-    status             = PrivDisconnected
+    status             = PrivDisconnected;
+    chunked;
   }
 
 let close x =
@@ -345,7 +347,7 @@ let url_encode s =
  do_url_encode s ""
 
 let http_header =
-  Printf.sprintf "SOURCE %s HTTP/1.0\r\n%s\r\n\r\n"
+  Printf.sprintf "SOURCE %s HTTP/1.%d\r\n%s\r\n\r\n"
 
 let get_auth user password = 
   Printf.sprintf "Basic %s" (encode64 (user ^ ":" ^ password))
@@ -462,8 +464,9 @@ let connect_http c socket source =
   let auth = get_auth source.user source.password in 
   try
     Hashtbl.add source.headers "Authorization" auth;
+    if c.chunked then Hashtbl.add source.headers "Transfer-Encoding" "chunked";
     let headers = header_string source in
-    let request = http_header source.mount headers in
+    let request = http_header source.mount (if c.chunked then 1 else 0) headers in
     write_data ~timeout:c.timeout socket request;
     (** Read input from socket. *)
     let ret = read_data ~timeout:c.timeout socket in 
@@ -697,5 +700,10 @@ let update_metadata ?charset c m =
 
 let send c x =
   let d = get_connection_data c in
+  let x =
+    if c.chunked then
+      Printf.sprintf "%X\r\n%s\r\n" (String.length x) x
+    else x
+  in
   write_data ~timeout:c.timeout d.data_socket x
 
