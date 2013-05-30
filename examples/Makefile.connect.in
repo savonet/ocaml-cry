@@ -2,6 +2,7 @@ SOURCES = connect.ml
 RESULT = connect
 INCDIRS = ../src
 LIBS = unix cry
+ANNOTATE = true
 
 all: nc
 

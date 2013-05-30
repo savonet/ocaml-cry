@@ -25,5 +25,5 @@ let () =
     Hashtbl.add meta "title"  "test";
     update_metadata c meta
   with
-    | Error e -> Printf.printf "Error: %s\n%!" (string_of_error e)
+    | e -> Printf.printf "Error: %s\n%!" (string_of_error e)
 
