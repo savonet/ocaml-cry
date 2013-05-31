@@ -480,7 +480,7 @@ let connect_http c socket source =
     let (v,code,s) = parse_http_answer (List.hd ret) in
     if code < 200 || code >= 300 then
       raise (Error (Http_answer (code,s,v)));
-    c.chunk_cap <- s = "1.1";
+    c.chunk_cap <- v = "1.1";
     c.icy_cap <- true;
     c.status <- 
       PrivConnected { connection = source;
