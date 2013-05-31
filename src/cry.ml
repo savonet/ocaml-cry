@@ -178,9 +178,47 @@ let create ?(ipv6=false) ?(chunked=false) ?bind ?connection_timeout ?(timeout=30
     chunked            = chunked;
   }
 
+(* Returns [false] if delay has been expired
+ * while waiting for the requested operation. *)
+let wait_for operation delay s =
+  let events () =
+   match operation with
+     | `Read ->
+          Unix.select [s] [] [] delay
+     | `Write ->
+          Unix.select [] [s] [] delay
+     | `Both ->
+          Unix.select [s] [s] [] delay
+  in
+  let r,w,_ = events () in
+  match operation with
+    | `Read -> r <> []
+    | `Write -> w <> []
+    | `Both -> r <> [] || w <> []
+
+let write_data ~timeout socket request =
+  let len = String.length request in
+  let rec write ofs =
+    if not (wait_for `Write timeout socket) then
+      raise Timeout ;
+    let rem = len - ofs in
+    if rem > 0 then
+      let ret = Unix.write socket request ofs rem in
+      if ret = 0 then
+        raise (Failure "connection closed.") ;
+      if ret < rem then
+        write (ofs+ret)
+  in
+  try
+    write 0
+  with
+    | e -> raise (Error (Write e))
+
 let close x =
     try
       let c = get_connection_data x in
+      if x.chunked then
+        write_data ~timeout:x.timeout c.data_socket "0\r\n\r\n";
       Unix.close c.data_socket ;
       x.icy_cap <- false;
       x.status <- PrivDisconnected
@@ -351,42 +389,6 @@ let http_header =
 
 let get_auth user password = 
   Printf.sprintf "Basic %s" (encode64 (user ^ ":" ^ password))
-
-(* Returns [false] if delay has been expired
- * while waiting for the requested operation. *)
-let wait_for operation delay s = 
-  let events () =
-   match operation with 
-     | `Read -> 
-          Unix.select [s] [] [] delay
-     | `Write ->
-          Unix.select [] [s] [] delay
-     | `Both ->
-          Unix.select [s] [s] [] delay
-  in
-  let r,w,_ = events () in
-  match operation with
-    | `Read -> r <> []
-    | `Write -> w <> []
-    | `Both -> r <> [] || w <> []
-
-let write_data ~timeout socket request =
-  let len = String.length request in
-  let rec write ofs =
-    if not (wait_for `Write timeout socket) then
-      raise Timeout ; 
-    let rem = len - ofs in
-    if rem > 0 then
-      let ret = Unix.write socket request ofs rem in
-      if ret = 0 then
-        raise (Failure "connection closed.") ;
-      if ret < rem then
-        write (ofs+ret)
-  in
-  try
-    write 0
-  with
-    | e -> raise (Error (Write e))
 
 let buf = String.create 1024
 
@@ -701,10 +703,14 @@ let update_metadata ?charset c m =
 
 let send c x =
   let d = get_connection_data c in
-  let x =
-    if c.chunked then
-      Printf.sprintf "%X\r\n%s\r\n" (String.length x) x
-    else x
-  in
-  write_data ~timeout:c.timeout d.data_socket x
+  if c.chunked then
+   begin
+    if x <> "" then
+      let x =
+        Printf.sprintf "%X\r\n%s\r\n" (String.length x) x
+       in
+       write_data ~timeout:c.timeout d.data_socket x
+   end
+  else 
+    write_data ~timeout:c.timeout d.data_socket x
 
