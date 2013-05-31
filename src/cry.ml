@@ -130,7 +130,7 @@ type t =
     bind               : string option;
     mutable icy_cap    : bool;
     mutable status     : status_priv;
-    chunked            : bool;
+    mutable chunked    : bool;
   }
 
 let get_connection_data x =
@@ -175,7 +175,7 @@ let create ?(ipv6=false) ?(chunked=false) ?bind ?connection_timeout ?(timeout=30
     bind               = bind;
     icy_cap            = false;
     status             = PrivDisconnected;
-    chunked;
+    chunked            = chunked;
   }
 
 let close x =
@@ -473,6 +473,7 @@ let connect_http c socket source =
     let (v,code,s) = parse_http_answer (List.hd ret) in
     if code < 200 || code >= 300 then
       raise (Error (Http_answer (code,s,v)));
+    c.chunked <- s = "1.1";
     c.icy_cap <- true;
     c.status <- 
       PrivConnected { connection = source;
