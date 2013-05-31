@@ -94,6 +94,7 @@ type connection =
     password     : string;
     host         : string;
     port         : int;
+    chunked      : bool;
     content_type : content_type;
     protocol     : protocol;
     headers      : (string, string) Hashtbl.t
@@ -125,12 +126,10 @@ type t
 (** Create a new handler.
   * 
   * [ipv6] is [false] by default.
-  * [chunked] ([false] by default) indicate that data should be sent using HTTP/1.1 chunked transfer encoding.
   * [bind] is not used by default (system default). 
   * [timeout] is [30.] by default. *)
 val create :
   ?ipv6:bool ->
-  ?chunked:bool ->
   ?bind:string ->
   ?connection_timeout:float -> 
   ?timeout:float -> unit -> t
@@ -167,6 +166,8 @@ val audio_info :
   * what your are doing.
   * [protocol] is [Http] by default.
   * [port] is [8000] by default.
+  * [chunked] is [false] by default and only works with HTTP/1.1-capable
+  * servers.
   * 
   * The list of preset headers for [Http] connections is:
   * ["User-Agent"], ["ice-name"], ["ice-genre"],
@@ -190,6 +191,7 @@ val connection :
   ?description:string ->
   ?host:string ->
   ?port:int ->
+  ?chunked:bool ->
   ?password:string ->
   ?protocol:protocol ->
   ?user:string ->

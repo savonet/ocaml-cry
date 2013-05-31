@@ -84,6 +84,7 @@ type connection =
     password     : string;
     host         : string;
     port         : int;
+    chunked      : bool;
     content_type : content_type;
     protocol     : protocol;
     headers      : (string,string) Hashtbl.t
@@ -96,6 +97,7 @@ let string_of_connection c =
        \"password\": %S,\n\
        \"host\": %S,\n\
        \"port\": %d,\n\
+       \"chunked\": %b,\n\
        \"content_type\": %S,\n\
        \"protocol\": %S,\n\
        \"headers\": { %s } }"
@@ -104,6 +106,7 @@ let string_of_connection c =
      c.password
      c.host
      c.port
+     c.chunked
      (string_of_content_type c.content_type)
      (string_of_protocol c.protocol)
      (Hashtbl.fold (fun x y z -> Printf.sprintf "%S: %S,\n%s" x y z)
@@ -130,7 +133,7 @@ type t =
     bind               : string option;
     mutable icy_cap    : bool;
     mutable status     : status_priv;
-    mutable chunked    : bool;
+    mutable chunk_cap  : bool;
   }
 
 let get_connection_data x =
@@ -167,7 +170,7 @@ let create_socket ?(ipv6=false) ?bind () =
        end;
        raise (Error (Create e))
 
-let create ?(ipv6=false) ?(chunked=false) ?bind ?connection_timeout ?(timeout=30.) () = 
+let create ?(ipv6=false) ?bind ?connection_timeout ?(timeout=30.) () = 
   { 
     ipv6               = ipv6;
     timeout            = timeout;
@@ -175,7 +178,7 @@ let create ?(ipv6=false) ?(chunked=false) ?bind ?connection_timeout ?(timeout=30
     bind               = bind;
     icy_cap            = false;
     status             = PrivDisconnected;
-    chunked            = chunked;
+    chunk_cap          = false;
   }
 
 (* Returns [false] if delay has been expired
@@ -217,9 +220,10 @@ let write_data ~timeout socket request =
 let close x =
     try
       let c = get_connection_data x in
-      if x.chunked then
+      if x.chunk_cap then
         write_data ~timeout:x.timeout c.data_socket "0\r\n\r\n";
       Unix.close c.data_socket ;
+      x.chunk_cap <- false;
       x.icy_cap <- false;
       x.status <- PrivDisconnected
     with
@@ -251,9 +255,9 @@ let connection
     ?(user_agent) ?(name) ?(genre) 
     ?(url) ?(public) ?(audio_info) 
     ?(description) ?(host="localhost") 
-    ?(port=8000) ?(password="hackme")
-    ?(protocol=Http) ?(user="source")
-    ~mount ~content_type () =
+    ?(port=8000) ?(chunked=false)
+    ?(password="hackme") ?(protocol=Http)
+    ?(user="source") ~mount ~content_type () =
   let headers = Hashtbl.create 10 in
   let public = 
     match public with
@@ -311,6 +315,7 @@ let connection
     host = host;
     port = port;
     user = user;
+    chunked = chunked;
     password = password;
     mount = mount;
     content_type  = content_type;
@@ -466,16 +471,16 @@ let connect_http c socket source =
   let auth = get_auth source.user source.password in 
   try
     Hashtbl.add source.headers "Authorization" auth;
-    if c.chunked then Hashtbl.add source.headers "Transfer-Encoding" "chunked";
+    if source.chunked then Hashtbl.add source.headers "Transfer-Encoding" "chunked";
     let headers = header_string source in
-    let request = http_header source.mount (if c.chunked then 1 else 0) headers in
+    let request = http_header source.mount (if source.chunked then 1 else 0) headers in
     write_data ~timeout:c.timeout socket request;
     (** Read input from socket. *)
     let ret = read_data ~timeout:c.timeout socket in 
     let (v,code,s) = parse_http_answer (List.hd ret) in
     if code < 200 || code >= 300 then
       raise (Error (Http_answer (code,s,v)));
-    c.chunked <- s = "1.1";
+    c.chunk_cap <- s = "1.1";
     c.icy_cap <- true;
     c.status <- 
       PrivConnected { connection = source;
@@ -703,7 +708,7 @@ let update_metadata ?charset c m =
 
 let send c x =
   let d = get_connection_data c in
-  if c.chunked then
+  if c.chunk_cap then
    begin
     if x <> "" then
       let x =
