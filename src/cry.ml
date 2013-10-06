@@ -84,6 +84,7 @@ type connection =
     password     : string;
     host         : string;
     port         : int;
+    chunked      : bool;
     content_type : content_type;
     protocol     : protocol;
     headers      : (string,string) Hashtbl.t
@@ -96,6 +97,7 @@ let string_of_connection c =
        \"password\": %S,\n\
        \"host\": %S,\n\
        \"port\": %d,\n\
+       \"chunked\": %b,\n\
        \"content_type\": %S,\n\
        \"protocol\": %S,\n\
        \"headers\": { %s } }"
@@ -104,6 +106,7 @@ let string_of_connection c =
      c.password
      c.host
      c.port
+     c.chunked
      (string_of_content_type c.content_type)
      (string_of_protocol c.protocol)
      (Hashtbl.fold (fun x y z -> Printf.sprintf "%S: %S,\n%s" x y z)
@@ -129,7 +132,8 @@ type t =
     connection_timeout : float option;
     bind               : string option;
     mutable icy_cap    : bool;
-    mutable status     : status_priv
+    mutable status     : status_priv;
+    mutable chunk_cap  : bool;
   }
 
 let get_connection_data x =
@@ -173,13 +177,53 @@ let create ?(ipv6=false) ?bind ?connection_timeout ?(timeout=30.) () =
     connection_timeout = connection_timeout;
     bind               = bind;
     icy_cap            = false;
-    status             = PrivDisconnected
+    status             = PrivDisconnected;
+    chunk_cap          = false;
   }
+
+(* Returns [false] if delay has been expired
+ * while waiting for the requested operation. *)
+let wait_for operation delay s =
+  let events () =
+   match operation with
+     | `Read ->
+          Unix.select [s] [] [] delay
+     | `Write ->
+          Unix.select [] [s] [] delay
+     | `Both ->
+          Unix.select [s] [s] [] delay
+  in
+  let r,w,_ = events () in
+  match operation with
+    | `Read -> r <> []
+    | `Write -> w <> []
+    | `Both -> r <> [] || w <> []
+
+let write_data ~timeout socket request =
+  let len = String.length request in
+  let rec write ofs =
+    if not (wait_for `Write timeout socket) then
+      raise Timeout ;
+    let rem = len - ofs in
+    if rem > 0 then
+      let ret = Unix.write socket request ofs rem in
+      if ret = 0 then
+        raise (Failure "connection closed.") ;
+      if ret < rem then
+        write (ofs+ret)
+  in
+  try
+    write 0
+  with
+    | e -> raise (Error (Write e))
 
 let close x =
     try
       let c = get_connection_data x in
+      if x.chunk_cap then
+        write_data ~timeout:x.timeout c.data_socket "0\r\n\r\n";
       Unix.close c.data_socket ;
+      x.chunk_cap <- false;
       x.icy_cap <- false;
       x.status <- PrivDisconnected
     with
@@ -211,9 +255,9 @@ let connection
     ?(user_agent) ?(name) ?(genre) 
     ?(url) ?(public) ?(audio_info) 
     ?(description) ?(host="localhost") 
-    ?(port=8000) ?(password="hackme")
-    ?(protocol=Http) ?(user="source")
-    ~mount ~content_type () =
+    ?(port=8000) ?(chunked=false)
+    ?(password="hackme") ?(protocol=Http)
+    ?(user="source") ~mount ~content_type () =
   let headers = Hashtbl.create 10 in
   let public = 
     match public with
@@ -271,6 +315,7 @@ let connection
     host = host;
     port = port;
     user = user;
+    chunked = chunked;
     password = password;
     mount = mount;
     content_type  = content_type;
@@ -345,46 +390,10 @@ let url_encode s =
  do_url_encode s ""
 
 let http_header =
-  Printf.sprintf "SOURCE %s HTTP/1.0\r\n%s\r\n\r\n"
+  Printf.sprintf "SOURCE %s HTTP/1.%d\r\n%s\r\n\r\n"
 
 let get_auth user password = 
   Printf.sprintf "Basic %s" (encode64 (user ^ ":" ^ password))
-
-(* Returns [false] if delay has been expired
- * while waiting for the requested operation. *)
-let wait_for operation delay s = 
-  let events () =
-   match operation with 
-     | `Read -> 
-          Unix.select [s] [] [] delay
-     | `Write ->
-          Unix.select [] [s] [] delay
-     | `Both ->
-          Unix.select [s] [s] [] delay
-  in
-  let r,w,_ = events () in
-  match operation with
-    | `Read -> r <> []
-    | `Write -> w <> []
-    | `Both -> r <> [] || w <> []
-
-let write_data ~timeout socket request =
-  let len = String.length request in
-  let rec write ofs =
-    if not (wait_for `Write timeout socket) then
-      raise Timeout ; 
-    let rem = len - ofs in
-    if rem > 0 then
-      let ret = Unix.write socket request ofs rem in
-      if ret = 0 then
-        raise (Failure "connection closed.") ;
-      if ret < rem then
-        write (ofs+ret)
-  in
-  try
-    write 0
-  with
-    | e -> raise (Error (Write e))
 
 let buf = String.create 1024
 
@@ -462,14 +471,16 @@ let connect_http c socket source =
   let auth = get_auth source.user source.password in 
   try
     Hashtbl.add source.headers "Authorization" auth;
+    if source.chunked then Hashtbl.add source.headers "Transfer-Encoding" "chunked";
     let headers = header_string source in
-    let request = http_header source.mount headers in
+    let request = http_header source.mount (if source.chunked then 1 else 0) headers in
     write_data ~timeout:c.timeout socket request;
     (** Read input from socket. *)
     let ret = read_data ~timeout:c.timeout socket in 
     let (v,code,s) = parse_http_answer (List.hd ret) in
     if code < 200 || code >= 300 then
       raise (Error (Http_answer (code,s,v)));
+    c.chunk_cap <- v = "1.1";
     c.icy_cap <- true;
     c.status <- 
       PrivConnected { connection = source;
@@ -697,5 +708,14 @@ let update_metadata ?charset c m =
 
 let send c x =
   let d = get_connection_data c in
-  write_data ~timeout:c.timeout d.data_socket x
+  if c.chunk_cap then
+   begin
+    if x <> "" then
+      let x =
+        Printf.sprintf "%X\r\n%s\r\n" (String.length x) x
+       in
+       write_data ~timeout:c.timeout d.data_socket x
+   end
+  else 
+    write_data ~timeout:c.timeout d.data_socket x
 
