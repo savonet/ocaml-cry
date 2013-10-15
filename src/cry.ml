@@ -62,11 +62,18 @@ and
   pp s e =
     Printf.sprintf "%s: %s" s (string_of_error e)
 
-type protocol = Icy | Http
+type verb = Put | Post | Source
+
+let string_of_verb = function
+  | Put -> "PUT"
+  | Post -> "POST"
+  | Source -> "SOURCE"
+
+type protocol = Icy | Http of verb
 
 let string_of_protocol = function
-  | Icy  -> "icy"
-  | Http -> "http"
+  | Icy    -> "icy"
+  | Http v -> Printf.sprintf "http(%s)" (string_of_verb v)
 
 type content_type = string
 
@@ -256,7 +263,7 @@ let connection
     ?(url) ?(public) ?(audio_info) 
     ?(description) ?(host="localhost") 
     ?(port=8000) ?(chunked=false)
-    ?(password="hackme") ?(protocol=Http)
+    ?(password="hackme") ?(protocol=(Http Source))
     ?(user="source") ~mount ~content_type () =
   let headers = Hashtbl.create 10 in
   let public = 
@@ -277,7 +284,7 @@ let connection
   in
   let x = 
     match protocol with
-      | Http -> 
+      | Http _ -> 
          let audio_info =
            match audio_info with
              | Some x ->
@@ -390,7 +397,7 @@ let url_encode s =
  do_url_encode s ""
 
 let http_header =
-  Printf.sprintf "SOURCE %s HTTP/1.%d\r\n%s\r\n\r\n"
+  Printf.sprintf "%s %s HTTP/1.%d\r\n%s\r\n\r\n"
 
 let get_auth user password = 
   Printf.sprintf "Basic %s" (encode64 (user ^ ":" ^ password))
@@ -467,13 +474,15 @@ let parse_http_answer s =
     | Scanf.Scan_failure s -> raise (Error (Bad_answer (Some s)))
     | _ -> raise (Error (Bad_answer None))
 
-let connect_http c socket source = 
+let connect_http c socket source verb = 
   let auth = get_auth source.user source.password in 
   try
     Hashtbl.add source.headers "Authorization" auth;
     if source.chunked then Hashtbl.add source.headers "Transfer-Encoding" "chunked";
     let headers = header_string source in
-    let request = http_header source.mount (if source.chunked then 1 else 0) headers in
+    let request = http_header (string_of_verb verb) source.mount 
+      (if source.chunked then 1 else 0) headers
+    in
     write_data ~timeout:c.timeout socket request;
     (** Read input from socket. *)
     let ret = read_data ~timeout:c.timeout socket in 
@@ -586,7 +595,7 @@ let connect c source =
     (* We do not know icy capabilities so far.. *)
     c.icy_cap <- false;
     match source.protocol with
-      | Http -> connect_http c socket source
+      | Http verb -> connect_http c socket source verb
       | Icy -> connect_icy c socket source
   with
     | e -> 
@@ -662,7 +671,7 @@ let manual_update_metadata
     in
     let request = 
       match protocol with
-        | Http ->
+        | Http _ ->
             let headers = 
               Printf.sprintf "Authorization: %s\r\n%s" (get_auth user password) user_agent
             in

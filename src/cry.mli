@@ -51,13 +51,16 @@ exception Error of error
 (** Get a string explaining an error. *)
 val string_of_error : exn -> string
 
+(** Possible verbs for HTTP streaming. Default: [Source] *)
+type verb = Put | Post | Source
+
 (** Possible protocols. [Icy] is the (undocumented) shoutcast source protocol.
   * [Http] is the icecast2 source protocol. 
   * 
   * Ogg streaming is only possible with [Http]. Any headerless format,
   * (e.g. mpeg containers), should work with both protocols,
   * provided you set the correct content-type (mime) for the source. *)
-type protocol = Icy | Http
+type protocol = Icy | Http of verb
 
 (** Return a string representation of a protocol. *)
 val string_of_protocol : protocol -> string

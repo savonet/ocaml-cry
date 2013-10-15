@@ -1,3 +1,9 @@
+0.3.0 ()
+=====
+* Added experimental HTTP capabilities:
+  - Use any PUT, POST or SOURCE verb
+  - Use chunked transfer for HTTP 1.1
+
 0.2.2 (04-10-2011)
 =====
 * Add second timeout parameters for connection attempts.
