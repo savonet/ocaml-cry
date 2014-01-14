@@ -249,7 +249,7 @@ let audio_info
   let infos = Hashtbl.create 10 in
   let f m x y = 
     match y with
-      | Some v -> Hashtbl.add infos x (m v)
+      | Some v -> Hashtbl.replace infos x (m v)
       | None -> ()
   in
   f string_of_int "channels" channels;
@@ -279,7 +279,7 @@ let connection
   in 
   let f (x,y) = 
     match y with
-      | Some v -> Hashtbl.add headers x v 
+      | Some v -> Hashtbl.replace headers x v 
       | None -> ()
   in
   let x = 
@@ -437,7 +437,9 @@ let read_data ~timeout socket =
   with
      | e -> raise (Error (Read e)) 
 
-let header_string source =
+let header_string headers source =
+    let unique_headers = Hashtbl.create 10 in
+    Hashtbl.iter (Hashtbl.replace unique_headers) headers;
     (* Icy headers are of the form: %s:%s *)
     let sep = 
       if source.protocol = Icy then
@@ -458,7 +460,7 @@ let header_string source =
     let f x y z =
       Printf.sprintf "%s:%s%s" x sep y :: z
     in
-    let headers = Hashtbl.fold f source.headers 
+    let headers = Hashtbl.fold f unique_headers 
                                (f content_label 
                                   source.content_type []) 
     in
@@ -477,15 +479,16 @@ let parse_http_answer s =
 let connect_http c socket source verb = 
   let auth = get_auth source.user source.password in 
   try
-    Hashtbl.add source.headers "Authorization" auth;
+    let headers = Hashtbl.copy source.headers in
+    Hashtbl.replace headers "Authorization" auth;
     begin
       try
         ignore(Unix.inet_addr_of_string source.host)
       with
-        | Failure _ -> Hashtbl.add source.headers "Host" source.host
+        | Failure _ -> Hashtbl.replace headers "Host" source.host
     end;
-    if source.chunked then Hashtbl.add source.headers "Transfer-Encoding" "chunked";
-    let headers = header_string source in
+    if source.chunked then Hashtbl.replace headers "Transfer-Encoding" "chunked";
+    let headers = header_string headers source in
     let request = http_header (string_of_verb verb) source.mount 
       (if source.chunked then 1 else 0) headers
     in
@@ -544,7 +547,7 @@ let connect_icy c socket source =
        | Scanf.Scan_failure s -> ()
     end;
     (* Now Write headers *)
-    let headers = header_string source in
+    let headers = header_string source.headers source in
     let request = Printf.sprintf "%s\r\n\r\n" headers in
     write_data ~timeout:c.timeout socket request;
     c.status <- 
@@ -613,9 +616,16 @@ let connect c source =
        end; 
        raise e
 
-let http_meta_request = 
+let http_meta_request mount charset meta headers = 
+  let unique_headers = Hashtbl.create 10 in
+  Hashtbl.iter (Hashtbl.replace unique_headers) headers;
+  let header = 
+     Hashtbl.fold (Printf.sprintf "%s: %s\r\n%s")
+                   unique_headers ""
+  in
   Printf.sprintf 
     "GET /admin/metadata?mode=updinfo&mount=%s%s%s HTTP/1.0\r\n%s\r\n"
+     mount charset meta header
 
 let icy_meta_request = 
   Printf.sprintf 
@@ -633,7 +643,7 @@ let manual_update_metadata
   in 
   let headers = 
     match headers with
-      | Some x -> x
+      | Some x -> Hashtbl.copy x
       | None   -> Hashtbl.create 0
   in
   let socket = create_socket ~ipv6 ?bind () in
@@ -645,26 +655,10 @@ let manual_update_metadata
   in
   try
     connect_socket ~timeout:connection_timeout socket host port;
-    let user_agent =
-      try
-        Hashtbl.find headers "User-Agent"
-      with
-        | Not_found -> "ocaml-cry"
-    in
-    (** This seems to be needed for shoutcast *)
-    let agent_complement = 
-      if protocol = Icy then
-        " (Mozilla compatible)"
-      else
-        ""
-    in
     let charset = 
       match charset with
         | Some c -> Printf.sprintf "&charset=%s" c
         | None   -> ""
-    in
-    let user_agent = 
-      Printf.sprintf "User-Agent: %s%s\r\n" user_agent agent_complement
     in
     let f x y z =
       if y <> "" then
@@ -678,11 +672,26 @@ let manual_update_metadata
     let request = 
       match protocol with
         | Http _ ->
-            let headers = 
-              Printf.sprintf "Authorization: %s\r\n%s" (get_auth user password) user_agent
-            in
+            Hashtbl.replace headers "Authorization" (get_auth user password);
+            begin
+              try
+                ignore(Unix.inet_addr_of_string host)
+              with
+                | Failure _ ->
+                    Hashtbl.replace headers "Host" host
+            end;
             http_meta_request mount charset meta headers
-        | Icy -> icy_meta_request password meta user_agent
+        | Icy ->
+            let user_agent =
+              try
+                Hashtbl.find headers "User-Agent"
+               with
+                | Not_found -> "ocaml-cry"
+            in
+            let user_agent =
+              Printf.sprintf "User-Agent: %s (Mozilla compatible)\r\n" user_agent
+            in
+            icy_meta_request password meta user_agent
     in
     write_data ~timeout socket request;
     (** Read input from socket. *)
