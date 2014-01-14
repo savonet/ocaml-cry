@@ -478,6 +478,12 @@ let connect_http c socket source verb =
   let auth = get_auth source.user source.password in 
   try
     Hashtbl.add source.headers "Authorization" auth;
+    begin
+      try
+        ignore(Unix.inet_addr_of_string source.host)
+      with
+        | Failure _ -> Hashtbl.add source.headers "Host" source.host
+    end;
     if source.chunked then Hashtbl.add source.headers "Transfer-Encoding" "chunked";
     let headers = header_string source in
     let request = http_header (string_of_verb verb) source.mount 
