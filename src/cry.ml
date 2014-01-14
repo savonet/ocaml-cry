@@ -476,17 +476,22 @@ let parse_http_answer s =
     | Scanf.Scan_failure s -> raise (Error (Bad_answer (Some s)))
     | _ -> raise (Error (Bad_answer None))
 
+let add_host_header headers host port =
+  try
+    ignore(Unix.inet_addr_of_string host)
+  with
+    | Failure _ ->
+        let host = if port = 80 then host else
+          Printf.sprintf "%s:%d" host port
+        in
+        Hashtbl.replace headers "Host" host
+
 let connect_http c socket source verb = 
   let auth = get_auth source.user source.password in 
   try
     let headers = Hashtbl.copy source.headers in
     Hashtbl.replace headers "Authorization" auth;
-    begin
-      try
-        ignore(Unix.inet_addr_of_string source.host)
-      with
-        | Failure _ -> Hashtbl.replace headers "Host" source.host
-    end;
+    add_host_header headers source.host source.port;
     if source.chunked then Hashtbl.replace headers "Transfer-Encoding" "chunked";
     let headers = header_string headers source in
     let request = http_header (string_of_verb verb) source.mount 
@@ -673,13 +678,7 @@ let manual_update_metadata
       match protocol with
         | Http _ ->
             Hashtbl.replace headers "Authorization" (get_auth user password);
-            begin
-              try
-                ignore(Unix.inet_addr_of_string host)
-              with
-                | Failure _ ->
-                    Hashtbl.replace headers "Host" host
-            end;
+            add_host_header headers host port;
             http_meta_request mount charset meta headers
         | Icy ->
             let user_agent =
