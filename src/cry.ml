@@ -476,9 +476,10 @@ let parse_http_answer s =
     | Scanf.Scan_failure s -> raise (Error (Bad_answer (Some s)))
     | _ -> raise (Error (Bad_answer None))
 
-let add_host_header headers host port =
+let add_host_header ?(force=false) headers host port =
   try
-    ignore(Unix.inet_addr_of_string host)
+    ignore(Unix.inet_addr_of_string host);
+    if force then Hashtbl.replace headers "Host" ""
   with
     | Failure _ ->
         let host = if port = 80 then host else
@@ -489,13 +490,14 @@ let add_host_header headers host port =
 let connect_http c socket source verb = 
   let auth = get_auth source.user source.password in 
   try
+    let http_version = if source.chunked then 1 else 0 in
     let headers = Hashtbl.copy source.headers in
     Hashtbl.replace headers "Authorization" auth;
-    add_host_header headers source.host source.port;
+    add_host_header ~force:(http_version = 1) headers source.host source.port;
     if source.chunked then Hashtbl.replace headers "Transfer-Encoding" "chunked";
     let headers = header_string headers source in
     let request = http_header (string_of_verb verb) source.mount 
-      (if source.chunked then 1 else 0) headers
+      http_version headers
     in
     write_data ~timeout:c.timeout socket request;
     (** Read input from socket. *)
