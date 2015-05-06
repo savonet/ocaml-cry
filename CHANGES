@@ -1,5 +1,8 @@
 0.3.0 ()
 =====
+* Implemented shoutcast v2 protocol extension
+  allowing multiple sources connected to the same
+  shoutcast v2 server.
 * Added experimental HTTP capabilities:
   - Use any PUT, POST or SOURCE verb
   - Use chunked transfer for HTTP 1.1

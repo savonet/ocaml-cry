@@ -163,6 +163,8 @@ val audio_info :
 (** Create a new [connection] value
   * with default values. 
   *
+  * [mount] is mandatory when using the [Http] protocol.
+  *
   * [host] is ["localhost"] by default.
   * [password] is ["hackme"] by default.
   * [user] is ["source"] by default. Change [user] only if you know
@@ -198,7 +200,8 @@ val connection :
   ?password:string ->
   ?protocol:protocol ->
   ?user:string ->
-  mount:string -> 
+  ?mount:string ->
+  ?icy_id:int ->
   content_type:content_type -> 
   unit -> connection
 

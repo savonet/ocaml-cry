@@ -264,7 +264,7 @@ let connection
     ?(description) ?(host="localhost") 
     ?(port=8000) ?(chunked=false)
     ?(password="hackme") ?(protocol=(Http Source))
-    ?(user="source") ~mount ~content_type () =
+    ?(user="source") ?mount ?icy_id ~content_type () =
   let headers = Hashtbl.create 10 in
   let public = 
     match public with
@@ -272,10 +272,23 @@ let connection
       | None -> None
   in
   let mount = 
-    if mount.[0] = '/' then 
-      mount 
-    else
-      Printf.sprintf "/%s" mount
+    match protocol with
+      | Icy ->
+         begin
+          match icy_id with
+            | Some id -> string_of_int id
+            | None -> "0"
+         end
+      | Http _ ->
+         begin
+          match mount with
+            | Some mount ->
+                if mount.[0] = '/' then 
+                  mount 
+                else
+                  Printf.sprintf "/%s" mount
+            | None -> raise (Error Invalid_usage)
+         end
   in 
   let f (x,y) = 
     match y with
@@ -521,7 +534,20 @@ let connect_http c socket source verb =
        raise e
 
 let connect_icy c socket source = 
-  let request = Printf.sprintf "%s\r\n" source.password in
+  let password =
+    let user =
+      match source.user with
+        | "" -> ""
+        | user -> Printf.sprintf "%s:" user
+     in
+     let id =
+       match source.mount with
+         | "0" -> ""
+         | id -> Printf.sprintf ":#%s" id
+     in
+     Printf.sprintf "%s%s%s" user source.password id
+  in
+  let request = Printf.sprintf "%s\r\n" password in
   try
     write_data ~timeout:c.timeout socket request;
     (** Read input from socket. *)
