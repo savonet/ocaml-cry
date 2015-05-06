@@ -277,7 +277,7 @@ let connection
          begin
           match icy_id with
             | Some id -> string_of_int id
-            | None -> "0"
+            | None -> "1"
          end
       | Http _ ->
          begin
@@ -542,7 +542,7 @@ let connect_icy c socket source =
      in
      let id =
        match source.mount with
-         | "0" -> ""
+         | "1" -> ""
          | id -> Printf.sprintf ":#%s" id
      in
      Printf.sprintf "%s%s%s" user source.password id
