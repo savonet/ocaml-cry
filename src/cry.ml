@@ -282,6 +282,7 @@ let connection
       | Http _ ->
          begin
           match mount with
+            | Some "" -> "/"
             | Some mount ->
                 if mount.[0] = '/' then 
                   mount 
@@ -541,9 +542,9 @@ let connect_icy c socket source =
         | user -> Printf.sprintf "%s:" user
      in
      let id =
-       match source.mount with
-         | "1" -> ""
-         | id -> Printf.sprintf ":#%s" id
+       match int_of_string source.mount with
+         | 1 -> ""
+         | id -> Printf.sprintf ":#%d" id
      in
      Printf.sprintf "%s%s%s" user source.password id
   in
