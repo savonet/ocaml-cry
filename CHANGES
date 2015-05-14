@@ -1,5 +1,6 @@
 0.3.0 ()
 =====
+* Switch to Bytes API.
 * Implemented shoutcast v2 protocol extension
   allowing multiple sources connected to the same
   shoutcast v2 server.

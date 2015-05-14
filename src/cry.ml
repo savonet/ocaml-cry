@@ -353,7 +353,7 @@ let encode64 s =
   let extra = String.length s mod 3 in
   let s = match extra with 1 -> s ^ "\000\000" | 2 -> s ^ "\000" | _ -> s in
   let n = String.length s in
-  let dst = String.create (4 * (n/3)) in
+  let dst = Bytes.create (4 * (n/3)) in
     for i = 0 to n/3 - 1 do
       let (:=) j v = dst.[i*4+j] <- digit.[v] in
       let c j = int_of_char s.[i*3+j] in
@@ -380,7 +380,7 @@ let to_hex2 =
        '8'; '9'; 'A'; 'B'; 'C'; 'D'; 'E'; 'F' |]
   in
     fun k ->
-      let s = String.create 2 in
+      let s = Bytes.create 2 in
         s.[0] <- hex_digits.( (k lsr 4) land 15 ) ;
         s.[1] <- hex_digits.( k land 15 ) ;
         s
@@ -416,7 +416,7 @@ let http_header =
 let get_auth user password = 
   Printf.sprintf "Basic %s" (encode64 (user ^ ":" ^ password))
 
-let buf = String.create 1024
+let buf = Bytes.create 1024
 
 (** Read and split data. 
   * There should always be at least

@@ -7,6 +7,9 @@ AC_MSG_RESULT([configuring $PACKAGE_STRING])
 
 AC_BASE_CHECKS()
 
+AC_CHECK_OCAML_BINDING([bytes],[],[],[1])
+INC="$INC `$OCAMLFIND query bytes`"
+
 # substitutions to perform
 AC_SUBST(VERSION)
 AC_SUBST(INC)
