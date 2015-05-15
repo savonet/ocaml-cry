@@ -164,6 +164,8 @@ val audio_info :
   * with default values. 
   *
   * [mount] is mandatory when using the [Http] protocol.
+  * [icy_id] is mandatory to support multiple shoutcast sources
+  * on shoutcast v2.
   *
   * [host] is ["localhost"] by default.
   * [password] is ["hackme"] by default.
