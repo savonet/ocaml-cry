@@ -1,4 +1,4 @@
-0.3.0 ()
+0.3.0 (2015-07-29)
 =====
 * Switch to Bytes API.
 * Implemented shoutcast v2 protocol extension
@@ -9,7 +9,7 @@
   - Use chunked transfer for HTTP 1.1
 * Added HTTP Host: header.
 
-0.2.2 (04-10-2011)
+0.2.2 (2011-04-10)
 =====
 * Add second timeout parameters for connection attempts.
 * New optional charset parameter for ICY metadata updates.
