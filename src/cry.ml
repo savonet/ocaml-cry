@@ -84,9 +84,13 @@ let mpeg = "audio/mpeg"
 let content_type_of_string s = s
 let string_of_content_type x = x
 
+type mount =
+  | Icy_id of int
+  | Icecast_mount of string
+
 type connection =
   {
-    mount        : string;
+    mount        : mount;
     user         : string;
     password     : string;
     host         : string;
@@ -97,9 +101,13 @@ type connection =
     headers      : (string,string) Hashtbl.t
   }
 
+let string_of_mount = function
+  | Icy_id id -> Printf.sprintf "\"sid\": %d" id
+  | Icecast_mount mount -> Printf.sprintf "\"mount\": %S" mount
+
 let string_of_connection c = 
   Printf.sprintf 
-    "{ \"mount\": %S,\n\
+    "{ %s,\n\
        \"user\":  %S,\n\
        \"password\": %S,\n\
        \"host\": %S,\n\
@@ -108,7 +116,7 @@ let string_of_connection c =
        \"content_type\": %S,\n\
        \"protocol\": %S,\n\
        \"headers\": { %s } }"
-     c.mount
+     (string_of_mount c.mount)
      c.user
      c.password
      c.host
@@ -258,39 +266,34 @@ let audio_info
   f string_of_float "quality" quality;
   infos
 
+let normalize_mount mount =
+  match mount with
+    | Icecast_mount mount -> Icecast_mount
+        begin
+          match mount with
+            | "" -> "/"
+            | mount ->
+                if mount.[0] = '/' then
+                  mount
+                else
+                  Printf.sprintf "/%s" mount
+        end
+    | _ -> mount
+
 let connection 
     ?(user_agent) ?(name) ?(genre) 
     ?(url) ?(public) ?(audio_info) 
     ?(description) ?(host="localhost") 
     ?(port=8000) ?(chunked=false)
     ?(password="hackme") ?(protocol=(Http Source))
-    ?(user="source") ?mount ?icy_id ~content_type () =
+    ?(user="source") ~mount ~content_type () =
   let headers = Hashtbl.create 10 in
   let public = 
     match public with
       | Some x -> if x then Some "1" else Some "0"
       | None -> None
   in
-  let mount = 
-    match protocol with
-      | Icy ->
-         begin
-          match icy_id with
-            | Some id -> string_of_int id
-            | None -> "1"
-         end
-      | Http _ ->
-         begin
-          match mount with
-            | Some "" -> "/"
-            | Some mount ->
-                if mount.[0] = '/' then 
-                  mount 
-                else
-                  Printf.sprintf "/%s" mount
-            | None -> raise (Error Invalid_usage)
-         end
-  in 
+  let mount = normalize_mount mount in 
   let f (x,y) = 
     match y with
       | Some v -> Hashtbl.replace headers x v 
@@ -501,6 +504,10 @@ let add_host_header ?(force=false) headers host port =
         in
         Hashtbl.replace headers "Host" host
 
+let http_path_of_mount = function
+  | Icecast_mount mount -> mount
+  | _ -> raise (Error Invalid_usage)
+
 let connect_http c socket source verb = 
   let auth = get_auth source.user source.password in 
   try
@@ -510,7 +517,7 @@ let connect_http c socket source verb =
     add_host_header ~force:(http_version = 1) headers source.host source.port;
     if source.chunked then Hashtbl.replace headers "Transfer-Encoding" "chunked";
     let headers = header_string headers source in
-    let request = http_header (string_of_verb verb) source.mount 
+    let request = http_header (string_of_verb verb) (http_path_of_mount source.mount)
       http_version headers
     in
     write_data ~timeout:c.timeout socket request;
@@ -534,6 +541,10 @@ let connect_http c socket source verb =
        end ;
        raise e
 
+let icy_id_of_mount = function
+  | Icy_id id -> id
+  | _ -> raise (Error Invalid_usage)
+
 let connect_icy c socket source = 
   let password =
     let user =
@@ -542,7 +553,7 @@ let connect_icy c socket source =
         | user -> Printf.sprintf "%s:" user
      in
      let id =
-       match int_of_string source.mount with
+       match icy_id_of_mount source.mount with
          | 1 -> ""
          | id -> Printf.sprintf ":#%d" id
      in
@@ -667,14 +678,9 @@ let icy_meta_request =
 
 let manual_update_metadata 
        ~host ~port ~protocol ~user ~password 
-       ~mount ?(connection_timeout=5.) ?(timeout=30.) ?headers ?(ipv6=false)
-       ?bind ?charset m =
-  let mount = 
-    if mount.[0] <> '/' then
-      "/" ^ mount
-    else
-      mount
-  in 
+       ~mount ?(connection_timeout=5.) ?(timeout=30.) ?headers
+       ?(ipv6=false) ?bind ?charset m =
+  let mount = normalize_mount mount in 
   let headers = 
     match headers with
       | Some x -> Hashtbl.copy x
@@ -706,10 +712,25 @@ let manual_update_metadata
     let request = 
       match protocol with
         | Http _ ->
+            let mount =
+              match mount with
+                | Icecast_mount mount -> mount
+                | _ -> raise (Error Invalid_usage)
+            in
             Hashtbl.replace headers "Authorization" (get_auth user password);
             add_host_header headers host port;
             http_meta_request mount charset meta headers
         | Icy ->
+            let sid =
+              match mount with
+                | Icy_id id -> id
+                | _ -> raise (Error Invalid_usage)
+            in
+            let meta =
+              match sid with
+                | 1 -> meta
+                | sid -> Printf.sprintf "%s&sid=%d" meta sid
+            in
             let user_agent =
               try
                 Hashtbl.find headers "User-Agent"

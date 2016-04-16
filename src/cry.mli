@@ -86,13 +86,19 @@ val content_type_of_string : string -> content_type
 (** Get the string representation of a mime type. *)
 val string_of_content_type : content_type -> string
 
+(** Type for a mount point. [Icy_id] are for Shoutcast v2
+  * sid. For Shoutcast v1, use [Icy_id 1]. *)
+type mount =
+  | Icy_id of int
+  | Icecast_mount of string
+
 (** Type for a source connection. 
   *
   * [headers] is a hash table containing the headers.
   * See [connection] function for more details. *)
 type connection =
   {
-    mount        : string;
+    mount        : mount;
     user         : string;
     password     : string;
     host         : string;
@@ -202,8 +208,7 @@ val connection :
   ?password:string ->
   ?protocol:protocol ->
   ?user:string ->
-  ?mount:string ->
-  ?icy_id:int ->
+  mount:mount ->
   content_type:content_type -> 
   unit -> connection
 
@@ -232,7 +237,7 @@ val manual_update_metadata :
            protocol:protocol ->
            user:string ->
            password:string ->
-           mount:string ->
+           mount:mount ->
            ?connection_timeout:float ->
            ?timeout:float ->
            ?headers:(string, string) Hashtbl.t ->
