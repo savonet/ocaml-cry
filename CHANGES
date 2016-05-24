@@ -2,6 +2,7 @@
 =====
 * Fixed shoutcast v2 metadata update
 * Better API
+* Switch to Bytes.set
 
 0.3.0 (2015-07-29)
 =====

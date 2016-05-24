@@ -358,7 +358,7 @@ let encode64 s =
   let n = String.length s in
   let dst = Bytes.create (4 * (n/3)) in
     for i = 0 to n/3 - 1 do
-      let (:=) j v = dst.[i*4+j] <- digit.[v] in
+      let (:=) j v = Bytes.set dst (i*4+j) digit.[v] in
       let c j = int_of_char s.[i*3+j] in
       let c0 = c 0 and c1 = c 1 and c2 = c 2 in
         0 := c0 lsr 2 ;
@@ -367,10 +367,10 @@ let encode64 s =
         3 := c2 land 63
     done ;
     if extra = 1 then begin
-      dst.[4*(n/3)-2] <- '=' ;
-      dst.[4*(n/3)-1] <- '='
+      Bytes.set dst (4*(n/3)-2) '=' ;
+      Bytes.set dst (4*(n/3)-1) '='
     end else if extra = 2 then
-      dst.[4*(n/3)-1] <- '=' ;
+      Bytes.set dst (4*(n/3)-1) '=' ;
     dst
 
 (* URL encoding/decoging according to RFC 1738, RFC 1630.
@@ -384,8 +384,8 @@ let to_hex2 =
   in
     fun k ->
       let s = Bytes.create 2 in
-        s.[0] <- hex_digits.( (k lsr 4) land 15 ) ;
-        s.[1] <- hex_digits.( k land 15 ) ;
+        Bytes.set s 0 hex_digits.( (k lsr 4) land 15 ) ;
+        Bytes.set s 1 hex_digits.( k land 15 ) ;
         s
 
 let url_encode s = 
