@@ -4,16 +4,16 @@ open Cry
 let c = create () 
 
 let connection =
-  let mount = "" in
+  let mount = Icecast_mount "" in
   let content_type = mpeg in
   let channels = 2 in
   let samplerate = 44100 in
   let bitrate = 128 in
-  let protocol = Icy in
+  let protocol = Https Put in
   let audio_info = audio_info ~channels ~samplerate ~bitrate () in 
   {
     (connection ~audio_info ~protocol ~mount ~content_type ()) with
-    port = 8005
+    port = 8443
   }
 
 let () =

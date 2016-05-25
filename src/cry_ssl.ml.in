@@ -27,6 +27,10 @@ type transport = {
 let register _ = ()
 
 @SSL_BEGIN@
+let () =
+  Ssl_threads.init ();
+  Ssl.init ()
+
 let register fn =
   let connect_ssl socketaddr =
     let ctx = Ssl.create_context Ssl.SSLv23 Ssl.Client_context in

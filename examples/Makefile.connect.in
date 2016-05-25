@@ -1,7 +1,7 @@
 SOURCES = connect.ml
 RESULT = connect
-INCDIRS = ../src
-LIBS = unix cry
+INCDIRS = ../src $(shell ocamlfind query ssl)
+LIBS = unix ssl ssl_threads cry
 ANNOTATE = true
 
 all: nc
