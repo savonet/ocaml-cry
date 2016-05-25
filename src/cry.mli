@@ -33,6 +33,20 @@
 
 (** {2 Types and errors} *)
 
+type operation = [`Read|`Write|`Both]
+
+type transport = {
+  write: bytes -> int -> int -> int;
+  read: bytes -> int -> int -> int;
+  wait_for : (operation -> float -> bool) option;
+  close: unit -> unit
+}
+
+(** Optional ssl module *)
+
+(** Register a transport module to be used for SSL connections. *)
+val register_ssl : (Unix.sockaddr -> transport) -> unit 
+
 (** Possible errors. *)
 type error =
   | Create of exn
@@ -41,6 +55,7 @@ type error =
   | Write of exn
   | Read of exn
   | Busy 
+  | Ssl_unavailable
   | Not_connected
   | Invalid_usage
   | Bad_answer of string option 
@@ -56,11 +71,12 @@ type verb = Put | Post | Source
 
 (** Possible protocols. [Icy] is the (undocumented) shoutcast source protocol.
   * [Http] is the icecast2 source protocol. 
+  * [Https] is the icecast2 source protocol with TLS connection.
   * 
   * Ogg streaming is only possible with [Http]. Any headerless format,
   * (e.g. mpeg containers), should work with both protocols,
   * provided you set the correct content-type (mime) for the source. *)
-type protocol = Icy | Http of verb
+type protocol = Icy | Http of verb | Https of verb
 
 (** Return a string representation of a protocol. *)
 val string_of_protocol : protocol -> string
@@ -121,11 +137,11 @@ type metadata = (string,string) Hashtbl.t
 
 (* Type for connection data *)
 type connection_data =
-  { connection      : connection;
-    data_socket     : Unix.file_descr }
+  { connection : connection;
+    transport  : transport }
 
 (** Type for the status of a handler. *)
-type status = Connected of connection_data | Disconnected 
+type status = Connected of connection_data | Disconnected
 
 (** Type for the main handler. *)
 type t
@@ -152,7 +168,7 @@ val get_status : t -> status
 val get_icy_cap : t -> bool
 
 (** Get data associated with a connection. Use it only if you know
-  * what you are doing. 
+  * what you are doing.
   *
   * Raises: [Error Not_connected] if not connected. *)
 val get_connection_data : t -> connection_data

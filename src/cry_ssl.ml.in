@@ -1,0 +1,43 @@
+(*
+ * Copyright 2003-2009 Savonet team
+ *
+ * This file is part of Ocaml-cry.
+ *
+ * Ocaml-cry is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Ocaml-cry is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Ocaml-cry; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *)
+
+type transport = {
+  ssl_write: bytes -> int -> int -> int;
+  ssl_read: bytes -> int -> int -> int;
+  ssl_close: unit -> unit
+}
+
+let register _ = ()
+
+@SSL_BEGIN@
+let register fn =
+  let connect_ssl socketaddr =
+    let ctx = Ssl.create_context Ssl.SSLv23 Ssl.Client_context in
+    Ssl.set_verify ctx [Ssl.Verify_peer] (Some Ssl.client_verify_callback);
+    Ssl.set_verify_depth ctx 3;
+    let ssl =
+      Ssl.open_connection_with_context ctx socketaddr
+    in
+    {ssl_write = Ssl.write ssl;
+     ssl_read = Ssl.read ssl;
+     ssl_close = (fun () -> Ssl.shutdown ssl) }
+  in
+  fn connect_ssl
+@SSL_END@

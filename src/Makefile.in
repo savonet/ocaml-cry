@@ -26,7 +26,7 @@ PS2PDF = @PS2PDF@
 OCAMLLIBPATH = @CAMLLIBPATH@
 ANNOTATE = true
 
-SOURCES = cry.ml cry.mli
+SOURCES = cry_ssl.ml cry.ml cry.mli
 RESULT = cry
 OCAMLDOCFLAGS = -stars
 LIBINSTALL_FILES = $(wildcard *.mli *.cmi *.cma *.cmxa *.cmx *.a *.so)

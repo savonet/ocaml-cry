@@ -16,5 +16,6 @@ src/*.a
 src/*.cm*
 src/*.o
 src/*.so
+src/cry_ssl.ml
 examples/Makefile.connect
 *.annot
