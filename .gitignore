@@ -18,4 +18,8 @@ src/*.o
 src/*.so
 src/cry_ssl.ml
 examples/Makefile.connect
+examples/._d/
+examples/connect
+examples/connect.cm*
+examples/connect.o
 *.annot
