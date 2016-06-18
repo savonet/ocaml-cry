@@ -41,7 +41,7 @@ type operation = [`Read|`Write|`Both]
 type transport = {
   write: bytes -> int -> int -> int;
   read: bytes -> int -> int -> int;
-  wait_for : (operation -> float -> bool) option;
+  wait_for : operation -> float -> bool;
   close: unit -> unit
 }
 
@@ -52,9 +52,9 @@ let register_ssl fn =
 
 let () =
   let callback fn =
-    register_ssl (fun sockaddr ->
-      let {Cry_ssl.ssl_write;ssl_read;ssl_close} = fn sockaddr in
-      {write=ssl_write;read=ssl_read;wait_for=None;close=ssl_close})
+    register_ssl (fun ?bind sockaddr ->
+      let {Cry_ssl.ssl_write;ssl_read;ssl_wait_for;ssl_close} = fn ?bind sockaddr in
+      {write=ssl_write;read=ssl_read;wait_for=ssl_wait_for;close=ssl_close})
   in
   Cry_ssl.register callback
 
@@ -110,7 +110,7 @@ let unix_transport ?(ipv6=false) ?bind ?timeout sockaddr =
   let transport =
     { write = Unix.write socket;
       read = Unix.read socket;
-      wait_for = Some wait_for;
+      wait_for = wait_for;
       close = (fun () -> Unix.close socket) }
   in
   let do_timeout = timeout <> None in
@@ -275,12 +275,8 @@ let create ?(ipv6=false) ?bind ?connection_timeout ?(timeout=30.) () =
 let write_data ~timeout transport request =
   let len = String.length request in
   let rec write ofs =
-    begin match transport.wait_for with
-      | None -> ()
-      | Some wait_for ->
-          if not (wait_for `Write timeout) then
-            raise Timeout
-    end;
+    if not (transport.wait_for `Write timeout) then
+      raise Timeout;
     let rem = len - ofs in
     if rem > 0 then
       let ret = transport.write request ofs rem in
@@ -491,12 +487,8 @@ let buf = Bytes.create 1024
 (* TODO: review all reading code as this 
  * seems a bit ad-hoc/naive.. *)
 let read_data ~timeout transport =
-  begin match transport.wait_for with
-    | None -> ()
-    | Some wait_for ->
-        if not (wait_for `Read timeout) then
-          raise Timeout
-  end;
+  if not (transport.wait_for `Read timeout) then
+    raise Timeout;
   try
      let ret = transport.read buf 0 1024 in
      (* split data *)

@@ -18,9 +18,12 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *)
 
+type operation = [`Read|`Write|`Both]
+
 type transport = {
   ssl_write: bytes -> int -> int -> int;
   ssl_read: bytes -> int -> int -> int;
+  ssl_wait_for : operation -> float -> bool;
   ssl_close: unit -> unit
 }
 
@@ -32,7 +35,7 @@ let () =
   Ssl.init ()
 
 let register fn =
-  let connect_ssl socketaddr =
+  let connect_ssl ?bind socketaddr =
     let ctx = Ssl.create_context Ssl.SSLv23 Ssl.Client_context in
     (* SSL_VERIFY_NONE is default in shout. TODO: add option.. *)
     Ssl.set_verify ctx [] (Some Ssl.client_verify_callback);
@@ -40,8 +43,36 @@ let register fn =
     let ssl =
       Ssl.open_connection_with_context ctx socketaddr
     in
+    begin
+     match bind with
+       | None -> ()
+       | Some s ->
+          let socket = Ssl.file_descr_of_socket ssl in
+          let bind_addr_inet = (Unix.gethostbyname s).Unix.h_addr_list.(0) in
+          (* Seems like you need to bind on port 0 *)
+          let bind_addr = Unix.ADDR_INET(bind_addr_inet, 0) in
+          Unix.bind socket bind_addr ;
+    end;
+    let wait_for operation delay =
+      let socket = Ssl.file_descr_of_socket ssl in
+      let events () =
+       match operation with
+         | `Read ->
+              Unix.select [socket] [] [] delay
+         | `Write ->
+              Unix.select [] [socket] [] delay
+         | `Both ->
+              Unix.select [socket] [socket] [] delay
+      in
+      let r,w,_ = events () in
+      match operation with
+        | `Read -> r <> []
+        | `Write -> w <> []
+        | `Both -> r <> [] || w <> []
+    in
     {ssl_write = Ssl.write ssl;
      ssl_read = Ssl.read ssl;
+     ssl_wait_for = wait_for;
      ssl_close = (fun () -> Ssl.shutdown ssl) }
   in
   fn connect_ssl

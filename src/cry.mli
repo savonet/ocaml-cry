@@ -38,14 +38,14 @@ type operation = [`Read|`Write|`Both]
 type transport = {
   write: bytes -> int -> int -> int;
   read: bytes -> int -> int -> int;
-  wait_for : (operation -> float -> bool) option;
+  wait_for : operation -> float -> bool;
   close: unit -> unit
 }
 
 (** Optional ssl module *)
 
 (** Register a transport module to be used for SSL connections. *)
-val register_ssl : (Unix.sockaddr -> transport) -> unit 
+val register_ssl : (?bind:string -> Unix.sockaddr -> transport) -> unit 
 
 (** Possible errors. *)
 type error =
