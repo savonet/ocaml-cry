@@ -13,7 +13,7 @@ INC="$INC `$OCAMLFIND query bytes`"
 AC_ARG_ENABLE([ssl],AS_HELP_STRING([--disable-ssl],["don't use SSL"]))
 
 if test "x$enable_oss" != "xno" ; then
-  AC_CHECK_OCAML_BINDING([ssl],[0.5.2])
+  AC_CHECK_OCAML_BINDING([ssl],[0.5.0])
 fi
 
 if test "$W_SSL" != ""; then
