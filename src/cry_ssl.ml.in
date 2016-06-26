@@ -21,8 +21,8 @@
 type operation = [`Read|`Write|`Both]
 
 type transport = {
-  ssl_write: bytes -> int -> int -> int;
-  ssl_read: bytes -> int -> int -> int;
+  ssl_write: Bytes.t -> int -> int -> int;
+  ssl_read: Bytes.t -> int -> int -> int;
   ssl_wait_for : operation -> float -> bool;
   ssl_close: unit -> unit
 }

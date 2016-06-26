@@ -39,8 +39,8 @@ exception Timeout
 type operation = [`Read|`Write|`Both]
 
 type transport = {
-  write: bytes -> int -> int -> int;
-  read: bytes -> int -> int -> int;
+  write: Bytes.t -> int -> int -> int;
+  read: Bytes.t -> int -> int -> int;
   wait_for : operation -> float -> bool;
   close: unit -> unit
 }
