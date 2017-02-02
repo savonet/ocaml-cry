@@ -45,7 +45,7 @@ type transport = {
 (** Optional ssl module *)
 
 (** Register a transport module to be used for SSL connections. *)
-val register_ssl : (?bind:string -> Unix.sockaddr -> transport) -> unit 
+val register_ssl : (?bind:string -> host:string -> Unix.sockaddr -> transport) -> unit 
 
 (** Possible errors. *)
 type error =

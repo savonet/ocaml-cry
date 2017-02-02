@@ -52,8 +52,8 @@ let register_ssl fn =
 
 let () =
   let callback fn =
-    register_ssl (fun ?bind sockaddr ->
-      let {Cry_ssl.ssl_write;ssl_read;ssl_wait_for;ssl_close} = fn ?bind sockaddr in
+    register_ssl (fun ?bind ~host sockaddr ->
+      let {Cry_ssl.ssl_write;ssl_read;ssl_wait_for;ssl_close} = fn ?bind ~host sockaddr in
       {write=ssl_write;read=ssl_read;wait_for=ssl_wait_for;close=ssl_close})
   in
   Cry_ssl.register callback
@@ -677,7 +677,7 @@ let connect c source =
   let transport = match source.protocol with
     | Icy
     | Http _ -> unix_transport ~ipv6:c.ipv6 ?bind:c.bind sockaddr
-    | Https _ -> (get_ssl ()) sockaddr
+    | Https _ -> (get_ssl ()) ~host:source.host sockaddr
   in
   try
     (* We do not know icy capabilities so far.. *)
@@ -725,7 +725,7 @@ let manual_update_metadata
   let transport = match protocol with
     | Icy
     | Http _ -> unix_transport ~ipv6 ?bind sockaddr
-    | Https _ -> (get_ssl ()) sockaddr
+    | Https _ -> (get_ssl ()) ~host sockaddr
   in
   let close () = 
     try

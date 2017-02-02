@@ -35,7 +35,7 @@ let () =
   Ssl.init ()
 
 let register fn =
-  let connect_ssl ?bind socketaddr =
+  let connect_ssl ?bind ~host socketaddr =
     let ctx = Ssl.create_context Ssl.SSLv23 Ssl.Client_context in
     (* SSL_VERIFY_NONE is default in shout. TODO: add option.. *)
     Ssl.set_verify ctx [] (Some Ssl.client_verify_callback);
@@ -77,3 +77,63 @@ let register fn =
   in
   fn connect_ssl
 @SSL_END@
+
+@SECURE_TRANSPORT_BEGIN@
+let register fn =
+  let connect_ssl ?bind ~host sockaddr =
+    let domain =
+      match sockaddr with
+        | Unix.ADDR_UNIX _ -> Unix.PF_UNIX
+        | Unix.ADDR_INET(_, _) -> Unix.PF_INET
+    in
+    let sock =
+      Unix.socket domain Unix.SOCK_STREAM 0
+    in
+    begin
+      try
+        Unix.connect sock sockaddr;
+      with
+        | exn -> Unix.close sock; raise exn
+    end;
+    begin
+      match bind with
+        | None -> ()
+        | Some s ->
+          let bind_addr_inet = (Unix.gethostbyname s).Unix.h_addr_list.(0) in
+          (* Seems like you need to bind on port 0 *)
+          let bind_addr = Unix.ADDR_INET(bind_addr_inet, 0) in
+          Unix.bind sock bind_addr
+    end;
+    let ctx =
+      SecureTransport.init SecureTransport.Client SecureTransport.Stream
+    in
+    SecureTransport.set_connection ctx sock;
+    SecureTransport.set_peer_domain_name host;
+    SecureTransport.handshake ctx;
+    let close () =
+      SecureTransport.close ctx;
+      Unix.close sock
+    in
+    let wait_for operation delay =
+      let events () =
+       match operation with
+         | `Read ->
+              Unix.select [sock] [] [] delay
+         | `Write ->
+              Unix.select [] [sock] [] delay
+         | `Both ->
+              Unix.select [sock] [sock] [] delay
+      in
+      let r,w,_ = events () in
+      match operation with
+        | `Read -> r <> []
+        | `Write -> w <> []
+        | `Both -> r <> [] || w <> []
+    in
+    {ssl_write = SecureTransport.write ctx;
+     ssl_read = SecureTransport.read ctx;
+     ssl_wait_for = wait_for;
+     ssl_close = close}
+  in
+  fn connect_ssl
+@SECURE_TRANSPORT_END@
