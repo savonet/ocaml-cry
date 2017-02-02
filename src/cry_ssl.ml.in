@@ -108,7 +108,7 @@ let register fn =
       SecureTransport.init SecureTransport.Client SecureTransport.Stream
     in
     SecureTransport.set_connection ctx sock;
-    SecureTransport.set_peer_domain_name host;
+    SecureTransport.set_peer_domain_name ctx host;
     SecureTransport.handshake ctx;
     let close () =
       SecureTransport.close ctx;
