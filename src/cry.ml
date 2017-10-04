@@ -30,6 +30,7 @@ type error =
   | Ssl_unavailable
   | Not_connected
   | Invalid_usage
+  | Unknown_host of string
   | Bad_answer of string option
   | Http_answer of int*string*string
 
@@ -63,8 +64,16 @@ let get_ssl () =
     | Some fn -> fn
     | None -> raise (Error Ssl_unavailable)
 
-let unix_transport ?(ipv6=false) ?bind ?timeout sockaddr =
-  let domain = if ipv6 then Unix.PF_INET6 else Unix.PF_INET in
+let gethostbyname h =
+  try
+    Unix.gethostbyname h
+  with
+    | Not_found -> raise (Error (Unknown_host h))
+
+let unix_transport ?bind ?timeout sockaddr =
+  let domain =
+    Unix.domain_of_sockaddr sockaddr
+  in
   let socket =
     try
       Unix.socket domain Unix.SOCK_STREAM 0
@@ -76,7 +85,7 @@ let unix_transport ?(ipv6=false) ?bind ?timeout sockaddr =
      match bind with
        | None -> ()
        | Some s ->
-          let bind_addr_inet = (Unix.gethostbyname s).Unix.h_addr_list.(0) in
+          let bind_addr_inet = (gethostbyname s).Unix.h_addr_list.(0) in
           (* Seems like you need to bind on port 0 *)
           let bind_addr = Unix.ADDR_INET(bind_addr_inet, 0) in
           Unix.bind socket bind_addr ;
@@ -152,6 +161,7 @@ let rec string_of_error =
     (*  | Unix.unix_error (code,name,param) ->
           Printf.sprintf "%s in %s(%s)" (Unix.error_message code)
                                          name param *)
+      | Error (Unknown_host h) -> Printf.sprintf "Unknown host: %s" h
       | Timeout -> "connection timeout"
       | Error (Bad_answer s) -> 
            Printf.sprintf "bad answer%s" 
@@ -247,7 +257,6 @@ type status = Connected of connection_data | Disconnected
 
 type t = 
   { 
-    ipv6               : bool;
     timeout            : float;
     connection_timeout : float option;
     bind               : string option;
@@ -261,9 +270,8 @@ let get_connection_data x =
     | PrivConnected d -> d
     | PrivDisconnected -> raise (Error Not_connected)
 
-let create ?(ipv6=false) ?bind ?connection_timeout ?(timeout=30.) () = 
+let create ?bind ?connection_timeout ?(timeout=30.) () = 
   { 
-    ipv6               = ipv6;
     timeout            = timeout;
     connection_timeout = connection_timeout;
     bind               = bind;
@@ -672,11 +680,11 @@ let connect c source =
     if source.protocol = Icy then source.port+1 else source.port
   in
   let sockaddr =
-    Unix.ADDR_INET((Unix.gethostbyname source.host).Unix.h_addr_list.(0),port)
+    Unix.ADDR_INET(Unix.inet_addr_of_string source.host,port)
   in
   let transport = match source.protocol with
     | Icy
-    | Http _ -> unix_transport ~ipv6:c.ipv6 ?bind:c.bind sockaddr
+    | Http _ -> unix_transport ?bind:c.bind sockaddr
     | Https _ -> (get_ssl ()) ~host:source.host sockaddr
   in
   try
@@ -712,7 +720,7 @@ let icy_meta_request =
 let manual_update_metadata 
        ~host ~port ~protocol ~user ~password 
        ~mount ?(connection_timeout=5.) ?(timeout=30.) ?headers
-       ?(ipv6=false) ?bind ?charset m =
+       ?bind ?charset m =
   let mount = normalize_mount mount in 
   let headers = 
     match headers with
@@ -720,11 +728,11 @@ let manual_update_metadata
       | None   -> Hashtbl.create 0
   in
   let sockaddr =
-    Unix.ADDR_INET((Unix.gethostbyname host).Unix.h_addr_list.(0),port)
+    Unix.ADDR_INET(Unix.inet_addr_of_string host,port)
   in
   let transport = match protocol with
     | Icy
-    | Http _ -> unix_transport ~ipv6 ?bind sockaddr
+    | Http _ -> unix_transport ?bind sockaddr
     | Https _ -> (get_ssl ()) ~host sockaddr
   in
   let close () = 

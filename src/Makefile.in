@@ -29,6 +29,7 @@ ANNOTATE = true
 SOURCES = cry_ssl.ml cry.ml cry.mli
 RESULT = cry
 OCAMLDOCFLAGS = -stars
+OCAMLFLAGS = -g
 LIBINSTALL_FILES = $(wildcard *.mli *.cmi *.cma *.cmxa *.cmx *.a *.so)
 ACLIBS = @LIBS@
 LDFLAGS = @LDFLAGS@

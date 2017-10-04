@@ -58,6 +58,7 @@ type error =
   | Ssl_unavailable
   | Not_connected
   | Invalid_usage
+  | Unknown_host of string
   | Bad_answer of string option 
   | Http_answer of int*string*string
 
@@ -150,11 +151,9 @@ type t
 
 (** Create a new handler.
   * 
-  * [ipv6] is [false] by default.
   * [bind] is not used by default (system default). 
   * [timeout] is [30.] by default. *)
 val create :
-  ?ipv6:bool ->
   ?bind:string ->
   ?connection_timeout:float -> 
   ?timeout:float -> unit -> t
@@ -257,7 +256,7 @@ val manual_update_metadata :
            ?connection_timeout:float ->
            ?timeout:float ->
            ?headers:(string, string) Hashtbl.t ->
-           ?ipv6:bool -> ?bind:string ->
+           ?bind:string ->
            ?charset:string -> metadata -> 
            unit
 

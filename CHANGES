@@ -1,3 +1,9 @@
+0.6.0 ()
+=====
+* Make IPv6 implicit.
+* Add debug flag (-g) to OCAMLFLAGS
+* Fix host resolution.
+
 0.5.0 (2017-04-11)
 =====
 * Add support for OSX's SecureTransport
