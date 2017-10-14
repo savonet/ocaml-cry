@@ -281,7 +281,8 @@ let create ?bind ?connection_timeout ?(timeout=30.) () =
   }
 
 let write_data ~timeout transport request =
-  let len = String.length request in
+  let request = Bytes.of_string request in
+  let len = Bytes.length request in
   let rec write ofs =
     if not (transport.wait_for `Write timeout) then
       raise Timeout;
@@ -438,7 +439,7 @@ let encode64 s =
       Bytes.set dst (4*(n/3)-1) '='
     end else if extra = 2 then
       Bytes.set dst (4*(n/3)-1) '=' ;
-    dst
+    Bytes.to_string dst
 
 (* URL encoding/decoging according to RFC 1738, RFC 1630.
  * Borrowed from ocamlnet. *)
@@ -453,7 +454,7 @@ let to_hex2 =
       let s = Bytes.create 2 in
         Bytes.set s 0 hex_digits.( (k lsr 4) land 15 ) ;
         Bytes.set s 1 hex_digits.( k land 15 ) ;
-        s
+        Bytes.to_string s
 
 let url_encode s = 
  let rec do_url_encode s s' =
@@ -500,22 +501,22 @@ let read_data ~timeout transport =
   try
      let ret = transport.read buf 0 1024 in
      (* split data *)
-     let buf = String.sub buf 0 ret in
+     let buf = Bytes.sub buf 0 ret in
      let rec f pos l = 
        try
-         let x = String.index_from buf pos '\n' in
-         f (x+1) (String.sub buf pos (x-pos-1)::l)
+         let x = Bytes.index_from buf pos '\n' in
+         f (x+1) (Bytes.sub buf pos (x-pos-1)::l)
        with
          | Invalid_argument _ 
          | Not_found -> 
              if pos < ret then 
-               String.sub buf pos (ret-pos) :: l 
+               Bytes.sub buf pos (ret-pos) :: l 
              else 
                l
      in
      let ret = f 0 [] in
      if List.length ret = 0 then
-       [""]
+       [Bytes.of_string ""]
      else
        List.rev (f 0 [])
   with
@@ -590,7 +591,7 @@ let connect_http c transport source verb =
     write_data ~timeout:c.timeout transport request;
     (** Read input from socket. *)
     let ret = read_data ~timeout:c.timeout transport in 
-    let (v,code,s) = parse_http_answer (List.hd ret) in
+    let (v,code,s) = parse_http_answer (Bytes.to_string (List.hd ret)) in
     if code < 200 || code >= 300 then
       raise (Error (Http_answer (code,s,v)));
     c.chunk_cap <- v = "1.1";
@@ -635,7 +636,7 @@ let connect_icy c transport source =
     in
     begin
      try
-       Scanf.sscanf (List.hd ret) "%[^\r^\n]" f
+       Scanf.sscanf (Bytes.to_string (List.hd ret)) "%[^\r^\n]" f
      with
        | Scanf.Scan_failure s -> raise (Error (Bad_answer (Some s)))
        | Error _ as e -> raise e
@@ -652,7 +653,7 @@ let connect_icy c transport source =
     in
     begin
      try
-       Scanf.sscanf ret "icy-caps:%[1]" f
+       Scanf.sscanf (Bytes.to_string ret) "icy-caps:%[1]" f
      with
        | Scanf.Scan_failure s -> ()
     end;
@@ -793,7 +794,7 @@ let manual_update_metadata
     write_data ~timeout transport request;
     (** Read input from socket. *)
     let ret = read_data ~timeout transport in
-    let (v,code,s) = parse_http_answer (List.hd ret) in
+    let (v,code,s) = parse_http_answer (Bytes.to_string (List.hd ret)) in
     if code <> 200 then
       raise (Error (Http_answer (code,s,v)));
     close ()

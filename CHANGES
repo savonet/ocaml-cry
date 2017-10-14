@@ -1,4 +1,4 @@
-0.6.0 ()
+0.6.0 (2017-10-14)
 =====
 * Make IPv6 implicit.
 * Add debug flag (-g) to OCAMLFLAGS
