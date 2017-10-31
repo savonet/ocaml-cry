@@ -561,12 +561,15 @@ let parse_http_answer s =
     | Scanf.Scan_failure s -> raise (Error (Bad_answer (Some s)))
     | _ -> raise (Error (Bad_answer None))
 
+let resolve_host host =
+  (Unix.gethostbyname host).Unix.h_addr_list.(0)
+
 let add_host_header ?(force=false) headers host port =
   try
-    ignore(Unix.inet_addr_of_string host);
+    ignore(resolve_host host);
     if force then Hashtbl.replace headers "Host" ""
   with
-    | Failure _ ->
+    | Not_found ->
         let host = if port = 80 then host else
           Printf.sprintf "%s:%d" host port
         in
@@ -681,7 +684,7 @@ let connect c source =
     if source.protocol = Icy then source.port+1 else source.port
   in
   let sockaddr =
-    Unix.ADDR_INET(Unix.inet_addr_of_string source.host,port)
+    Unix.ADDR_INET(resolve_host source.host,port)
   in
   let transport = match source.protocol with
     | Icy
@@ -729,7 +732,7 @@ let manual_update_metadata
       | None   -> Hashtbl.create 0
   in
   let sockaddr =
-    Unix.ADDR_INET(Unix.inet_addr_of_string host,port)
+    Unix.ADDR_INET(resolve_host host,port)
   in
   let transport = match protocol with
     | Icy
