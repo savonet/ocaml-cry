@@ -1,4 +1,4 @@
-0.6.1 ()
+0.6.1 (2017-11-02)
 =====
 * Fix hostname resolution (savonet/liquidsoap#496)
 
