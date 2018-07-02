@@ -134,18 +134,27 @@ let unix_transport ?bind ?timeout sockaddr =
          transport
      | None -> assert false
   in
+  let finish () =
+    try
+      if do_timeout then
+        Unix.set_nonblock socket ;
+      Unix.connect socket sockaddr;
+      if do_timeout then
+        Unix.clear_nonblock socket;
+      transport
+    with
+      | Unix.Unix_error(Unix.EINPROGRESS, _, _) -> check_timeout ()
+      | Unix.Unix_error(Unix.EWOULDBLOCK, _, _) when Sys.os_type = "Win32" ->
+          check_timeout ()
+      | e -> raise (Error (Connect e))
+  in
   try
-    if do_timeout then
-      Unix.set_nonblock socket ;
-    Unix.connect socket sockaddr;
-    if do_timeout then
-      Unix.clear_nonblock socket;
-    transport
-  with
-    | Unix.Unix_error(Unix.EINPROGRESS, _, _) -> check_timeout ()
-    | Unix.Unix_error(Unix.EWOULDBLOCK, _, _) when Sys.os_type = "Win32" ->
-        check_timeout ()
-    | e -> raise (Error (Connect e))
+    finish ()
+  with e ->
+    begin try
+      Unix.close socket
+    with _ -> () end;
+    raise e
 
 let rec string_of_error = 
      function

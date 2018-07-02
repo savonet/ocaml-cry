@@ -1,3 +1,9 @@
+0.6.2 ()
+=====
+* Fix fd leak in unix_transport,
+  make sure it doesn't happen in SSL
+  implementations as well (savonet/liquidsoap#548)
+
 0.6.1 (2017-11-02)
 =====
 * Fix hostname resolution (savonet/liquidsoap#496)

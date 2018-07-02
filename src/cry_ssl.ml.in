@@ -43,7 +43,7 @@ let register fn =
     let ssl =
       Ssl.open_connection_with_context ctx socketaddr
     in
-    begin
+    begin try
      match bind with
        | None -> ()
        | Some s ->
@@ -52,6 +52,11 @@ let register fn =
           (* Seems like you need to bind on port 0 *)
           let bind_addr = Unix.ADDR_INET(bind_addr_inet, 0) in
           Unix.bind socket bind_addr ;
+    with e ->
+      begin try
+        Ssl.shutdown ssl
+      with _ -> () end;
+      raise e
     end;
     let wait_for operation delay =
       let socket = Ssl.file_descr_of_socket ssl in
@@ -93,16 +98,27 @@ let register fn =
       try
         Unix.connect sock sockaddr;
       with
-        | exn -> Unix.close sock; raise exn
+        | exn ->
+            begin try
+              Unix.close sock
+            with _ -> () end;
+            raise exn
     end;
     begin
       match bind with
         | None -> ()
         | Some s ->
-          let bind_addr_inet = (Unix.gethostbyname s).Unix.h_addr_list.(0) in
-          (* Seems like you need to bind on port 0 *)
-          let bind_addr = Unix.ADDR_INET(bind_addr_inet, 0) in
-          Unix.bind sock bind_addr
+          begin try
+            let bind_addr_inet = (Unix.gethostbyname s).Unix.h_addr_list.(0) in
+            (* Seems like you need to bind on port 0 *)
+            let bind_addr = Unix.ADDR_INET(bind_addr_inet, 0) in
+            Unix.bind sock bind_addr
+          with exn ->
+            begin try
+              Unix.close sock
+            with _ -> () end;
+            raise exn
+         end
     end;
     let ctx =
       SecureTransport.init SecureTransport.Client SecureTransport.Stream
