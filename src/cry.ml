@@ -271,7 +271,7 @@ type t =
     bind               : string option;
     mutable icy_cap    : bool;
     mutable status     : status_priv;
-    mutable chunk_cap  : bool;
+    mutable chunked    : bool;
   }
 
 let get_connection_data x =
@@ -286,7 +286,7 @@ let create ?bind ?connection_timeout ?(timeout=30.) () =
     bind               = bind;
     icy_cap            = false;
     status             = PrivDisconnected;
-    chunk_cap          = false;
+    chunked            = false;
   }
 
 let write_data ~timeout transport request =
@@ -311,10 +311,10 @@ let write_data ~timeout transport request =
 let close x =
     try
       let c = get_connection_data x in
-      if x.chunk_cap then
+      if x.chunked then
         write_data ~timeout:x.timeout c.transport "0\r\n\r\n";
       c.transport.close ();
-      x.chunk_cap <- false;
+      x.chunked <- false;
       x.icy_cap <- false;
       x.status <- PrivDisconnected
     with
@@ -606,7 +606,7 @@ let connect_http c transport source verb =
     let (v,code,s) = parse_http_answer (Bytes.to_string (List.hd ret)) in
     if code < 200 || code >= 300 then
       raise (Error (Http_answer (code,s,v)));
-    c.chunk_cap <- v = "1.1";
+    c.chunked <- source.chunked;
     c.icy_cap <- true;
     c.status <- 
       PrivConnected { connection = source;
@@ -842,7 +842,7 @@ let update_metadata ?charset c m =
 
 let send c x =
   let d = get_connection_data c in
-  if c.chunk_cap then
+  if c.chunked then
    begin
     if x <> "" then
       let x =
