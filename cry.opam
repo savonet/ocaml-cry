@@ -1,4 +1,5 @@
 opam-version: "2.0"
+name: "cry"
 version: "0.6.3"
 maintainer: "Romain Beauxis <toots@rastageeks.org>"
 authors: "The Savonet Team <savonet-users@lists.sourceforge.net>"
