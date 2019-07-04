@@ -20,3 +20,5 @@ build: [
 ]
 install: [make "install"]
 dev-repo: "git+https://github.com/savonet/ocaml-cry.git"
+synopsis:
+  "The cry library is an implementation of the shout protocol to connect to audio diffusion servers such as icecast"
