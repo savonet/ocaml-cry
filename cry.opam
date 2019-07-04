@@ -1,18 +1,22 @@
 opam-version: "2.0"
-version: "dev"
+version: "0.6.3"
 maintainer: "Romain Beauxis <toots@rastageeks.org>"
 authors: "The Savonet Team <savonet-users@lists.sourceforge.net>"
 homepage: "https://github.com/savonet/ocaml-cry"
 bug-reports: "https://github.com/savonet/ocaml-cry/issues"
-depends: ["ocaml" "ocamlfind"]
-depopts: ["ssl" "osx-secure-transport"]
-flags: light-uninstall
+depends: [
+  "ocaml"
+  "ocamlfind" {build}
+]
+depopts: [
+  "ssl"
+  "osx-secure-transport"
+]
 build: [
-  ["./bootstrap"]
+  ["./bootstrap"] {pinned}
   ["./configure" "--prefix" prefix]
-  [make "clean"]
+  [make "clean"] {pinned}
   [make]
 ]
 install: [make "install"]
-remove: ["ocamlfind" "remove" "cry"]
 dev-repo: "git+https://github.com/savonet/ocaml-cry.git"
