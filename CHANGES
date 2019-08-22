@@ -1,3 +1,7 @@
+0.6.4 (unreleased)
+=====
+* Set SSL to use default path for certificate resolution.
+
 0.6.3 (2019-08-04)
 =====
 * Set chunked capability based on request

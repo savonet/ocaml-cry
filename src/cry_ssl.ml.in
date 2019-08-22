@@ -40,6 +40,7 @@ let register fn =
     (* SSL_VERIFY_NONE is default in shout. TODO: add option.. *)
     Ssl.set_verify ctx [] (Some Ssl.client_verify_callback);
     Ssl.set_verify_depth ctx 3;
+    Ssl.set_default_verify_paths ctx;
     let ssl =
       Ssl.open_connection_with_context ctx socketaddr
     in
