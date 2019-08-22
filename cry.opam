@@ -10,7 +10,7 @@ depends: [
   "ocamlfind" {build}
 ]
 depopts: [
-  "ssl"
+  "ssl" {>= "0.5.9"}
   "osx-secure-transport"
 ]
 build: [
