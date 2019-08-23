@@ -1,6 +1,7 @@
-0.6.4 (unreleased)
+0.6.4 (2019-08-22)
 =====
 * Set SSL to use default path for certificate resolution.
+* Fix fd leak with SSL
 
 0.6.3 (2019-08-04)
 =====
