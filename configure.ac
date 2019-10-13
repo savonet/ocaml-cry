@@ -1,5 +1,8 @@
 # check for one particular file of the sources 
-AC_INIT([ocaml-cry],[0.6.4],[savonet-users@lists.sourceforge.net])
+AC_INIT(
+  [ocaml-cry],
+  m4_esyscmd([cat cry.opam | grep ^version | sed 's/version: "\([^"]*\)"/\1/' | tr -d '\r\n']),
+  [savonet-users@lists.sourceforge.net])
 
 VERSION=$PACKAGE_VERSION
 AC_MSG_RESULT([configuring $PACKAGE_STRING])

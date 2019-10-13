@@ -289,9 +289,13 @@ let create ?bind ?connection_timeout ?(timeout=30.) () =
     chunked            = false;
   }
 
-let write_data ~timeout transport request =
-  let request = Bytes.of_string request in
-  let len = Bytes.length request in
+let write_data ~timeout ?(offset=0) ?length transport request =
+  let request = Bytes.unsafe_of_string request in
+  let len =
+    match length with
+      | Some l -> l
+      | None -> Bytes.length request
+  in
   let rec write ofs =
     if not (transport.wait_for `Write timeout) then
       raise Timeout;
@@ -304,7 +308,7 @@ let write_data ~timeout transport request =
         write (ofs+ret)
   in
   try
-    write 0
+    write offset
   with
     | e -> raise (Error (Write e))
 
@@ -840,15 +844,20 @@ let update_metadata ?charset c m =
        ~mount ?headers ?connection_timeout
        ?charset m
 
-let send c x =
+let send ?(offset=0) ?length c x =
+  let length =
+    match length with
+      | Some l -> l
+      | None -> String.length x
+  in
   let d = get_connection_data c in
   if c.chunked then
    begin
-    if x <> "" then
+    if length > 0 then
       let x =
-        Printf.sprintf "%X\r\n%s\r\n" (String.length x) x
+        Printf.sprintf "%X\r\n%s\r\n" length (String.sub x offset length)
        in
        write_data ~timeout:c.timeout d.transport x
    end
   else 
-    write_data ~timeout:c.timeout d.transport x
+    write_data ~offset ~length ~timeout:c.timeout d.transport x

@@ -264,7 +264,7 @@ val manual_update_metadata :
   *
   * Raises: [Error Not_connected]
   * if not connected. *)
-val send : t -> string -> unit
+val send : ?offset:int -> ?length:int -> t -> string -> unit
 
 (** Close a source connection. 
   * 
