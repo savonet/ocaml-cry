@@ -33,19 +33,14 @@
 
 (** {2 Types and errors} *)
 
-type operation = [`Read|`Write|`Both]
+type operation = [ `Read | `Write | `Both ]
 
 type transport = {
-  write: Bytes.t -> int -> int -> int;
-  read: Bytes.t -> int -> int -> int;
+  write : Bytes.t -> int -> int -> int;
+  read : Bytes.t -> int -> int -> int;
   wait_for : operation -> float -> bool;
-  close: unit -> unit
+  close : unit -> unit;
 }
-
-(** Optional ssl module *)
-
-(** Register a transport module to be used for SSL connections. *)
-val register_ssl : (?bind:string -> host:string -> Unix.sockaddr -> transport) -> unit 
 
 (** Possible errors. *)
 type error =
@@ -54,15 +49,23 @@ type error =
   | Close of exn
   | Write of exn
   | Read of exn
-  | Busy 
+  | Busy
   | Ssl_unavailable
   | Not_connected
   | Invalid_usage
   | Unknown_host of string
-  | Bad_answer of string option 
-  | Http_answer of int*string*string
+  | Bad_answer of string option
+  | Http_answer of int * string * string
 
 exception Error of error
+exception Timeout
+
+(** Optional ssl module *)
+
+(** Register a transport module to be used for SSL connections. *)
+val register_https :
+  (?timeout:float -> ?bind:string -> host:string -> Unix.sockaddr -> transport) ->
+  unit
 
 (** Get a string explaining an error. *)
 val string_of_error : exn -> string
@@ -105,26 +108,23 @@ val string_of_content_type : content_type -> string
 
 (** Type for a mount point. [Icy_id] are for Shoutcast v2
   * sid. For Shoutcast v1, use [Icy_id 1]. *)
-type mount =
-  | Icy_id of int
-  | Icecast_mount of string
+type mount = Icy_id of int | Icecast_mount of string
 
 (** Type for a source connection. 
   *
   * [headers] is a hash table containing the headers.
   * See [connection] function for more details. *)
-type connection =
-  {
-    mount        : mount;
-    user         : string;
-    password     : string;
-    host         : string;
-    port         : int;
-    chunked      : bool;
-    content_type : content_type;
-    protocol     : protocol;
-    headers      : (string, string) Hashtbl.t
-  }
+type connection = {
+  mount : mount;
+  user : string;
+  password : string;
+  host : string;
+  port : int;
+  chunked : bool;
+  content_type : content_type;
+  protocol : protocol;
+  headers : (string, string) Hashtbl.t;
+}
 
 (** Returns a JSON string representation of a connection. *)
 val string_of_connection : connection -> string
@@ -134,12 +134,10 @@ val string_of_connection : connection -> string
 type audio_info = (string, string) Hashtbl.t
 
 (** Type for metadata values. *)
-type metadata = (string,string) Hashtbl.t
+type metadata = (string, string) Hashtbl.t
 
 (* Type for connection data *)
-type connection_data =
-  { connection : connection;
-    transport  : transport }
+type connection_data = { connection : connection; transport : transport }
 
 (** Type for the status of a handler. *)
 type status = Connected of connection_data | Disconnected
@@ -147,16 +145,14 @@ type status = Connected of connection_data | Disconnected
 (** Type for the main handler. *)
 type t
 
-  (** {2 API} *)
+(** {2 API} *)
 
 (** Create a new handler.
   * 
   * [bind] is not used by default (system default). 
   * [timeout] is [30.] by default. *)
 val create :
-  ?bind:string ->
-  ?connection_timeout:float -> 
-  ?timeout:float -> unit -> t
+  ?bind:string -> ?connection_timeout:float -> ?timeout:float -> unit -> t
 
 (** Get a handler's status *)
 val get_status : t -> status
@@ -178,8 +174,9 @@ val audio_info :
   ?samplerate:int ->
   ?channels:int ->
   ?quality:float ->
-  ?bitrate:int -> 
-  unit -> audio_info
+  ?bitrate:int ->
+  unit ->
+  audio_info
 
 (** Create a new [connection] value
   * with default values. 
@@ -224,8 +221,9 @@ val connection :
   ?protocol:protocol ->
   ?user:string ->
   mount:mount ->
-  content_type:content_type -> 
-  unit -> connection
+  content_type:content_type ->
+  unit ->
+  connection
 
 (** Connect a handler. *)
 val connect : t -> connection -> unit
@@ -246,19 +244,20 @@ val update_metadata : ?charset:string -> t -> metadata -> unit
   * Optional [timeout] is [30.] by default.
   * 
   * Use it only if you know what you are doing ! *)
-val manual_update_metadata :  
-           host:string ->
-           port:int ->
-           protocol:protocol ->
-           user:string ->
-           password:string ->
-           mount:mount ->
-           ?connection_timeout:float ->
-           ?timeout:float ->
-           ?headers:(string, string) Hashtbl.t ->
-           ?bind:string ->
-           ?charset:string -> metadata -> 
-           unit
+val manual_update_metadata :
+  host:string ->
+  port:int ->
+  protocol:protocol ->
+  user:string ->
+  password:string ->
+  mount:mount ->
+  ?connection_timeout:float ->
+  ?timeout:float ->
+  ?headers:(string, string) Hashtbl.t ->
+  ?bind:string ->
+  ?charset:string ->
+  metadata ->
+  unit
 
 (** Send data to a source connection. 
   *
@@ -270,5 +269,4 @@ val send : ?offset:int -> ?length:int -> t -> string -> unit
   * 
   * Raises: [Error Not_connected]
   * if not connected. *)
-val close : t -> unit 
-
+val close : t -> unit

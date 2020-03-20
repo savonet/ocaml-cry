@@ -1,8 +1,7 @@
 ocaml-cry
 
-
-This package contains an OCaml low level implementation of 
-the shout protocol.
+This package contains an OCaml implementation of the
+various icecast & shoutcast source client protocols.
 
 Please read the COPYING file before using this software.
 
@@ -10,19 +9,17 @@ Prerequisites:
 ==============
 
 - ocaml
+
+- dune
+
 - findlib
-
-Configuration:
-==============
-
-	$ ./configure
-
-This should prepare the compilation of the library.
 
 Compilation:
 ============
 
-	$ make
+```sh
+dune build
+```
 
 This should build both the native and the byte-code version of the
 extension library.
@@ -30,11 +27,18 @@ extension library.
 Installation:
 =============
 
-	# make install
+Using [opam](http://opam.ocaml.org/):
+```sh
+opam install lastfm
+```
+
+Using `dune` and a local copy (dev only):
+```sh
+dune install
+``` 
 
 This should install the library file (using ocamlfind) in the
-appropriate place. You may need the administrative (root) 
-privileges to execute this.
+appropriate place.
 
 Author:
 =======
