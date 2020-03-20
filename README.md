@@ -29,7 +29,7 @@ Installation:
 
 Using [opam](http://opam.ocaml.org/):
 ```sh
-opam install lastfm
+opam install cry
 ```
 
 Using `dune` and a local copy (dev only):
