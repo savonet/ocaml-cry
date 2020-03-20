@@ -498,6 +498,7 @@ let connect_http c transport source verb =
     Hashtbl.replace headers "Authorization" auth;
     add_host_header ~force:(http_version = 1) headers source.host source.port;
     if source.chunked then Hashtbl.replace headers "Transfer-Encoding" "chunked";
+    if verb = Put then Hashtbl.add headers "Expect" "100-continue";
     let headers = header_string headers source in
     let request =
       http_header (string_of_verb verb)
@@ -508,7 +509,13 @@ let connect_http c transport source verb =
     (* Read input from socket. *)
     let ret = read_data ~timeout:c.timeout transport in
     let v, code, s = parse_http_answer (Bytes.to_string (List.hd ret)) in
-    if code < 200 || code >= 300 then raise (Error (Http_answer (code, s, v)));
+    let err = Error (Http_answer (code, s, v)) in
+    begin
+      match verb with
+      | Put when code <> 100 -> raise err
+      | v when v <> Put && (code < 200 || code >= 300) -> raise err
+      | _ -> ()
+    end;
     c.chunked <- source.chunked;
     c.icy_cap <- true;
     c.status <- PrivConnected { connection = source; transport }

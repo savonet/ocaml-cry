@@ -2,6 +2,7 @@
 =====
 * Switched to dune.
 * Added optional offset and length parameters to send function.
+* Added supper for Expect: 100-continue to PUT requests (savonet/liquidsoap#1078).
 
 0.6.4 (2019-08-22)
 =====
