@@ -11,5 +11,5 @@ fi
 eval `opam config env`
 opam install -q -y ${OPAM_PACKAGES}
 
-# compile & run tests
-dune runtest
+# compile
+dune build
