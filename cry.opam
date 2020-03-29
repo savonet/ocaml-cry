@@ -12,9 +12,9 @@ bug-reports: "https://github.com/savonet/ocaml-cry/issues"
 depends: [
   "dune" {> "2.0"}
 ]
-depopts: [
-  "ssl" {>= "0.5.9"}
-  "osx-secure-transport"
+depopts: ["ssl" "osx-secure-transport"]
+conflicts: [
+  "ssl" {< "0.5.9"}
 ]
 build: [
   ["dune" "subst"] {pinned}

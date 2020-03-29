@@ -120,9 +120,9 @@ let rec string_of_error = function
   | Error Ssl_unavailable -> "SSL transport is not available"
   | Error Not_connected -> "not connected"
   | Error Invalid_usage -> "invalid usage"
-  (*  | Unix.unix_error (code,name,param) ->
-          Printf.sprintf "%s in %s(%s)" (Unix.error_message code)
-                                         name param *)
+  (* | Unix.unix_error (code,name,param) ->
+         Printf.sprintf "%s in %s(%s)" (Unix.error_message code)
+                                        name param *)
   | Error (Unknown_host h) -> Printf.sprintf "Unknown host: %s" h
   | Timeout -> "connection timeout"
   | Error (Bad_answer s) ->

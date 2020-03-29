@@ -15,6 +15,7 @@
  (depends
   (dune (> 2.0)))
  (depopts
-  (ssl (>= 0.5.9))
+  ssl
   osx-secure-transport)
+ (conflicts (ssl (< 0.5.9)))
 )
