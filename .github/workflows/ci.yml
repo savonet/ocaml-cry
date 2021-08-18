@@ -37,3 +37,10 @@ jobs:
       run: opam exec dune build
     - name: Run tests locally
       run: opam exec dune runtest
+    - name: Upload asset
+      if: matrix.os == 'windows-latest' && matrix.https == 'ssl'
+      uses: actions/upload-artifact@v2
+      with:
+        name: connect-windows
+        path: _build/default/examples/connect.exe
+        if-no-files-found: error
