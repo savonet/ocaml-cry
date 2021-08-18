@@ -34,6 +34,6 @@ jobs:
     - name: Install locally
       run: opam depext -y -i ${{ matrix.https }} cry
     - name: Build locally
-      run: eval $(opam env) && dune build
+      run: opam exec dune build
     - name: Run tests locally
-      run: eval $(opam env) && dune runtest
+      run: opam exec dune runtest
