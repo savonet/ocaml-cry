@@ -64,7 +64,7 @@ exception Timeout
 
 (** Register a transport module to be used for SSL connections. *)
 val register_https :
-  (?timeout:float -> ?bind:string -> host:string -> Unix.sockaddr -> transport) ->
+  (host:string -> Unix.file_descr -> transport) ->
   unit
 
 (** Get a string explaining an error. *)

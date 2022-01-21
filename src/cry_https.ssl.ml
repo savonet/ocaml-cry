@@ -25,35 +25,18 @@ let () =
   Ssl.init ()
 
 let register fn =
-  let connect_ssl ?timeout:_ ?bind ~host:_ socketaddr =
+  let connect_ssl ~host:_ socket =
     let ctx = Ssl.create_context Ssl.SSLv23 Ssl.Client_context in
     (* SSL_VERIFY_NONE is default in shout. TODO: add option.. *)
     Ssl.set_verify ctx [] (Some Ssl.client_verify_callback);
     Ssl.set_verify_depth ctx 3;
     ignore (Ssl.set_default_verify_paths ctx);
-    let ssl = Ssl.open_connection_with_context ctx socketaddr in
+    let ssl = Ssl.embed_socket socket ctx in
+    Ssl.connect ssl;
     let shutdown () =
       Ssl.shutdown ssl;
       Unix.close (Ssl.file_descr_of_socket ssl)
     in
-    begin
-      try
-        match bind with
-          | None -> ()
-          | Some s ->
-              let socket = Ssl.file_descr_of_socket ssl in
-              let bind_addr_inet =
-                (Unix.gethostbyname s).Unix.h_addr_list.(0)
-              in
-              (* Seems like you need to bind on port 0 *)
-              let bind_addr = Unix.ADDR_INET (bind_addr_inet, 0) in
-              Unix.bind socket bind_addr
-      with e ->
-        begin
-          try shutdown () with _ -> ()
-        end;
-        raise e
-    end;
     let wait_for operation delay =
       let socket = Ssl.file_descr_of_socket ssl in
       let events () =

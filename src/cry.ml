@@ -27,8 +27,8 @@ let register_https fn = ssl := Some fn
 
 let () =
   let callback fn =
-    register_https (fun ?timeout ?bind ~host sockaddr ->
-        fn ?timeout ?bind ~host sockaddr)
+    register_https (fun ~host socket ->
+        fn ~host socket)
   in
   Cry_https.register callback
 
@@ -38,27 +38,7 @@ let get_ssl () =
 let gethostbyname h =
   try Unix.gethostbyname h with Not_found -> raise (Error (Unknown_host h))
 
-let unix_transport ?bind ?timeout sockaddr =
-  let domain = Unix.domain_of_sockaddr sockaddr in
-  let socket =
-    try Unix.socket domain Unix.SOCK_STREAM 0
-    with e -> raise (Error (Create e))
-  in
-  begin
-    try
-      match bind with
-        | None -> ()
-        | Some s ->
-            let bind_addr_inet = (gethostbyname s).Unix.h_addr_list.(0) in
-            (* Seems like you need to bind on port 0 *)
-            let bind_addr = Unix.ADDR_INET (bind_addr_inet, 0) in
-            Unix.bind socket bind_addr
-    with e ->
-      begin
-        try Unix.close socket with _ -> ()
-      end;
-      raise (Error (Create e))
-  end;
+let unix_transport socket =
   let wait_for operation delay =
     let events () =
       match operation with
@@ -72,43 +52,12 @@ let unix_transport ?bind ?timeout sockaddr =
       | `Write -> w <> []
       | `Both -> r <> [] || w <> []
   in
-  let transport =
     {
       write = Unix.write socket;
       read = Unix.read socket;
       wait_for;
       close = (fun () -> Unix.close socket);
     }
-  in
-  let do_timeout = timeout <> None in
-  let check_timeout () =
-    match timeout with
-      | Some timeout ->
-          (* Block in a select call for [timeout] seconds. *)
-          let _, w, _ = Unix.select [] [socket] [] timeout in
-          if w = [] then raise (Error (Connect Timeout));
-          Unix.clear_nonblock socket;
-          transport
-      | None -> assert false
-  in
-  let finish () =
-    try
-      if do_timeout then Unix.set_nonblock socket;
-      Unix.connect socket sockaddr;
-      if do_timeout then Unix.clear_nonblock socket;
-      transport
-    with
-      | Unix.Unix_error (Unix.EINPROGRESS, _, _) -> check_timeout ()
-      | Unix.Unix_error (Unix.EWOULDBLOCK, _, _) when Sys.os_type = "Win32" ->
-          check_timeout ()
-      | e -> raise (Error (Connect e))
-  in
-  try finish ()
-  with e ->
-    begin
-      try Unix.close socket with _ -> ()
-    end;
-    raise e
 
 let rec string_of_error = function
   | Error (Create e) -> pp "could not initiate a new handler" e
@@ -580,14 +529,66 @@ let connect_icy c transport source =
     end;
     raise e
 
+let do_connect ?bind ?timeout host port =
+  let sockaddr = resolve_host host port in
+  let domain = Unix.domain_of_sockaddr sockaddr in
+  let socket =
+    try Unix.socket domain Unix.SOCK_STREAM 0
+    with e -> raise (Error (Create e))
+  in
+  begin
+    try
+      match bind with
+        | None -> ()
+        | Some s ->
+            let bind_addr_inet = (gethostbyname s).Unix.h_addr_list.(0) in
+            (* Seems like you need to bind on port 0 *)
+            let bind_addr = Unix.ADDR_INET (bind_addr_inet, 0) in
+            Unix.bind socket bind_addr
+    with e ->
+      begin
+        try Unix.close socket with _ -> ()
+      end;
+      raise (Error (Create e))
+  end;
+  let do_timeout = timeout <> None in
+  let check_timeout () =
+    match timeout with
+      | Some timeout ->
+          (* Block in a select call for [timeout] seconds. *)
+          let _, w, _ = Unix.select [] [socket] [] timeout in
+          if w = [] then raise (Error (Connect Timeout));
+          Unix.clear_nonblock socket;
+          socket
+      | None -> assert false
+  in
+  let finish () =
+    try
+      if do_timeout then Unix.set_nonblock socket;
+      Unix.connect socket sockaddr;
+      if do_timeout then Unix.clear_nonblock socket;
+      socket
+    with
+      | Unix.Unix_error (Unix.EINPROGRESS, _, _) -> check_timeout ()
+      | Unix.Unix_error (Unix.EWOULDBLOCK, _, _) when Sys.os_type = "Win32" ->
+          check_timeout ()
+      | e -> raise (Error (Connect e))
+  in
+  try finish ()
+  with e ->
+    begin
+      try Unix.close socket with _ -> ()
+    end;
+    raise e
+
 let connect c source =
   if c.status <> PrivDisconnected then raise (Error Busy);
   let port = if source.protocol = Icy then source.port + 1 else source.port in
-  let sockaddr = resolve_host source.host port in
+  let socket = do_connect ?bind:c.bind source.host port in
   let transport =
     match source.protocol with
-      | Icy | Http _ -> unix_transport ?bind:c.bind sockaddr
-      | Https _ -> (get_ssl ()) ~host:source.host sockaddr
+      | Icy | Http _ -> unix_transport socket
+      | Https _ -> (get_ssl ()) ~host:source.host socket
   in
   try
     (* We do not know icy capabilities so far.. *)
@@ -618,12 +619,11 @@ let manual_update_metadata ~host ~port ~protocol ~user ~password ~mount
   let headers =
     match headers with Some x -> Hashtbl.copy x | None -> Hashtbl.create 0
   in
-  let sockaddr = resolve_host host port in
+  let socket = do_connect ?bind ~timeout:connection_timeout host port in
   let transport =
     match protocol with
-      | Icy | Http _ ->
-          unix_transport ?bind ~timeout:connection_timeout sockaddr
-      | Https _ -> (get_ssl ()) ~timeout:connection_timeout ~host sockaddr
+      | Icy | Http _ -> unix_transport socket
+      | Https _ -> (get_ssl ()) ~host socket
   in
   let close () = try transport.close () with e -> raise (Error (Close e)) in
   try
