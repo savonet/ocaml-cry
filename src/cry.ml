@@ -35,9 +35,6 @@ let () =
 let get_ssl () =
   match !ssl with Some fn -> fn | None -> raise (Error Ssl_unavailable)
 
-let gethostbyname h =
-  try Unix.gethostbyname h with Not_found -> raise (Error (Unknown_host h))
-
 let unix_transport socket =
   let wait_for operation delay =
     let events () =
@@ -425,6 +422,11 @@ let parse_http_answer s =
     | Scanf.Scan_failure s -> raise (Error (Bad_answer (Some s)))
     | _ -> raise (Error (Bad_answer None))
 
+let sockaddr_of_address address =
+  match Unix.getaddrinfo address "0" [AI_NUMERICHOST] with
+  | [] -> raise Not_found
+  | addr :: _ -> addr.ai_addr
+
 let resolve_host host port =
   match Unix.getaddrinfo host (string_of_int port) [AI_FAMILY PF_INET; AI_SOCKTYPE SOCK_STREAM] with
   | [] -> raise Not_found
@@ -541,10 +543,7 @@ let do_connect ?bind ?timeout host port =
       match bind with
         | None -> ()
         | Some s ->
-            let bind_addr_inet = (gethostbyname s).Unix.h_addr_list.(0) in
-            (* Seems like you need to bind on port 0 *)
-            let bind_addr = Unix.ADDR_INET (bind_addr_inet, 0) in
-            Unix.bind socket bind_addr
+           Unix.bind socket (sockaddr_of_address s)
     with e ->
       begin
         try Unix.close socket with _ -> ()
