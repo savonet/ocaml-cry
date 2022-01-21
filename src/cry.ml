@@ -428,7 +428,7 @@ let sockaddr_of_address address =
   | addr :: _ -> addr.ai_addr
 
 let resolve_host host port =
-  match Unix.getaddrinfo host (string_of_int port) [AI_FAMILY PF_INET; AI_SOCKTYPE SOCK_STREAM] with
+  match Unix.getaddrinfo host (string_of_int port) [AI_SOCKTYPE SOCK_STREAM] with
   | [] -> raise Not_found
   | l -> l
 
