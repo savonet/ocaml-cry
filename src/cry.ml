@@ -531,7 +531,7 @@ let connect_icy c transport source =
     end;
     raise e
 
-let connect1 ?bind ?timeout sockaddr =
+let connect_sockaddr ?bind ?timeout sockaddr =
   let domain = Unix.domain_of_sockaddr sockaddr in
   let socket =
     try Unix.socket domain Unix.SOCK_STREAM 0
@@ -585,10 +585,10 @@ let do_connect ?bind ?timeout host port =
     | [] -> assert false
     | addr :: [] ->
        (* Let a possible error bubble up *)
-       connect1 ?bind ?timeout addr.ai_addr
+       connect_sockaddr ?bind ?timeout addr.ai_addr
     | addr :: tail ->
        try
-         connect1 ?bind ?timeout addr.ai_addr
+         connect_sockaddr ?bind ?timeout addr.ai_addr
        with _ ->
          connect_any ?bind ?timeout tail
   in connect_any ?bind ?timeout (resolve_host host port)
