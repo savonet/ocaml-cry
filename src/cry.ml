@@ -476,11 +476,14 @@ let parse_http_answer s =
     | Scanf.Scan_failure s -> raise (Error (Bad_answer (Some s)))
     | _ -> raise (Error (Bad_answer None))
 
-let resolve_host host = (Unix.gethostbyname host).Unix.h_addr_list.(0)
+let resolve_host host port =
+  match Unix.getaddrinfo host (string_of_int port) [AI_FAMILY PF_INET; AI_SOCKTYPE SOCK_STREAM] with
+  | [] -> raise Not_found
+  | first :: _ -> first.ai_addr
 
 let add_host_header ?(force = false) headers host port =
   try
-    ignore (resolve_host host);
+    ignore (resolve_host host port);
     if force then Hashtbl.replace headers "Host" ""
   with Not_found ->
     let host = if port = 80 then host else Printf.sprintf "%s:%d" host port in
@@ -580,7 +583,7 @@ let connect_icy c transport source =
 let connect c source =
   if c.status <> PrivDisconnected then raise (Error Busy);
   let port = if source.protocol = Icy then source.port + 1 else source.port in
-  let sockaddr = Unix.ADDR_INET (resolve_host source.host, port) in
+  let sockaddr = resolve_host source.host port in
   let transport =
     match source.protocol with
       | Icy | Http _ -> unix_transport ?bind:c.bind sockaddr
@@ -615,7 +618,7 @@ let manual_update_metadata ~host ~port ~protocol ~user ~password ~mount
   let headers =
     match headers with Some x -> Hashtbl.copy x | None -> Hashtbl.create 0
   in
-  let sockaddr = Unix.ADDR_INET (resolve_host host, port) in
+  let sockaddr = resolve_host host port in
   let transport =
     match protocol with
       | Icy | Http _ ->
