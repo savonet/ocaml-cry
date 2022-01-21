@@ -21,53 +21,7 @@
 open Cry_common
 
 let register fn =
-  let connect_ssl ?timeout ?bind ~host sockaddr =
-    let domain =
-      match sockaddr with
-        | Unix.ADDR_UNIX _ -> Unix.PF_UNIX
-        | Unix.ADDR_INET (_, _) -> Unix.PF_INET
-    in
-    let sock = Unix.socket domain Unix.SOCK_STREAM 0 in
-    let do_timeout = timeout <> None in
-    let check_timeout () =
-      match timeout with
-        | Some timeout ->
-            (* Block in a select call for [timeout] seconds. *)
-            let _, w, _ = Unix.select [] [sock] [] timeout in
-            if w = [] then raise (Error (Connect Timeout));
-            Unix.clear_nonblock sock
-        | None -> assert false
-    in
-    begin
-      try
-        if do_timeout then Unix.set_nonblock sock;
-        Unix.connect sock sockaddr;
-        if do_timeout then Unix.clear_nonblock sock
-      with
-      | Unix.Unix_error (Unix.EINPROGRESS, _, _) -> check_timeout ()
-      | Unix.Unix_error (Unix.EWOULDBLOCK, _, _) when Sys.os_type = "Win32" ->
-          check_timeout ()
-      | exn ->
-          begin
-            try Unix.close sock with _ -> ()
-          end;
-          raise exn
-    end;
-    begin
-      match bind with
-      | None -> ()
-      | Some s -> (
-          try
-            let bind_addr_inet = (Unix.gethostbyname s).Unix.h_addr_list.(0) in
-            (* Seems like you need to bind on port 0 *)
-            let bind_addr = Unix.ADDR_INET (bind_addr_inet, 0) in
-            Unix.bind sock bind_addr
-          with exn ->
-            begin
-              try Unix.close sock with _ -> ()
-            end;
-            raise exn )
-    end;
+  let connect_ssl ~host sock =
     let ctx =
       SecureTransport.init SecureTransport.Client SecureTransport.Stream
     in
