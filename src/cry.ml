@@ -430,7 +430,7 @@ let sockaddr_of_address address =
 let resolve_host host port =
   match Unix.getaddrinfo host (string_of_int port) [AI_FAMILY PF_INET; AI_SOCKTYPE SOCK_STREAM] with
   | [] -> raise Not_found
-  | first :: _ -> first.ai_addr
+  | l -> l
 
 let add_host_header ?(force = false) headers host port =
   try
@@ -531,8 +531,7 @@ let connect_icy c transport source =
     end;
     raise e
 
-let do_connect ?bind ?timeout host port =
-  let sockaddr = resolve_host host port in
+let connect1 ?bind ?timeout sockaddr =
   let domain = Unix.domain_of_sockaddr sockaddr in
   let socket =
     try Unix.socket domain Unix.SOCK_STREAM 0
@@ -579,6 +578,20 @@ let do_connect ?bind ?timeout host port =
       try Unix.close socket with _ -> ()
     end;
     raise e
+
+let do_connect ?bind ?timeout host port =
+  let rec connect_any ?bind ?timeout (addrs : Unix.addr_info list) =
+    match addrs with
+    | [] -> assert false
+    | addr :: [] ->
+       (* Let a possible error bubble up *)
+       connect1 ?bind ?timeout addr.ai_addr
+    | addr :: tail ->
+       try
+         connect1 ?bind ?timeout addr.ai_addr
+       with _ ->
+         connect_any ?bind ?timeout tail
+  in connect_any ?bind ?timeout (resolve_host host port)
 
 let connect c source =
   if c.status <> PrivDisconnected then raise (Error Busy);
