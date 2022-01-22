@@ -26,10 +26,7 @@ let ssl = ref None
 let register_https fn = ssl := Some fn
 
 let () =
-  let callback fn =
-    register_https (fun ~host socket ->
-        fn ~host socket)
-  in
+  let callback fn = register_https (fun ~host socket -> fn ~host socket) in
   Cry_https.register callback
 
 let get_ssl () =
@@ -49,12 +46,12 @@ let unix_transport socket =
       | `Write -> w <> []
       | `Both -> r <> [] || w <> []
   in
-    {
-      write = Unix.write socket;
-      read = Unix.read socket;
-      wait_for;
-      close = (fun () -> Unix.close socket);
-    }
+  {
+    write = Unix.write socket;
+    read = Unix.read socket;
+    wait_for;
+    close = (fun () -> Unix.close socket);
+  }
 
 let rec string_of_error = function
   | Error (Create e) -> pp "could not initiate a new handler" e
@@ -179,7 +176,7 @@ let write_data ~timeout ?(offset = 0) ?length transport request =
     if rem > 0 then (
       let ret = transport.write request ofs rem in
       if ret = 0 then raise (Failure "connection closed.");
-      if ret < rem then write (ofs + ret) )
+      if ret < rem then write (ofs + ret))
   in
   try write offset with e -> raise (Error (Write e))
 
@@ -271,7 +268,7 @@ let connection ?user_agent ?name ?genre ?url ?public ?audio_info ?description
               match audio_info with
                 | None -> None
                 | Some x -> (
-                    try Some (Hashtbl.find x "bitrate") with Not_found -> None )
+                    try Some (Hashtbl.find x "bitrate") with Not_found -> None)
             );
           ]
   in
@@ -424,13 +421,15 @@ let parse_http_answer s =
 
 let sockaddr_of_address address =
   match Unix.getaddrinfo address "0" [AI_NUMERICHOST] with
-  | [] -> raise Not_found
-  | addr :: _ -> addr.ai_addr
+    | [] -> raise Not_found
+    | addr :: _ -> addr.ai_addr
 
 let resolve_host host port =
-  match Unix.getaddrinfo host (string_of_int port) [AI_SOCKTYPE SOCK_STREAM] with
-  | [] -> raise Not_found
-  | l -> l
+  match
+    Unix.getaddrinfo host (string_of_int port) [AI_SOCKTYPE SOCK_STREAM]
+  with
+    | [] -> raise Not_found
+    | l -> l
 
 let add_host_header ?(force = false) headers host port =
   try
@@ -541,8 +540,7 @@ let connect_sockaddr ?bind ?timeout sockaddr =
     try
       match bind with
         | None -> ()
-        | Some s ->
-           Unix.bind socket (sockaddr_of_address s)
+        | Some s -> Unix.bind socket (sockaddr_of_address s)
     with e ->
       begin
         try Unix.close socket with _ -> ()
@@ -582,16 +580,15 @@ let connect_sockaddr ?bind ?timeout sockaddr =
 let do_connect ?bind ?timeout host port =
   let rec connect_any ?bind ?timeout (addrs : Unix.addr_info list) =
     match addrs with
-    | [] -> assert false
-    | addr :: [] ->
-       (* Let a possible error bubble up *)
-       connect_sockaddr ?bind ?timeout addr.ai_addr
-    | addr :: tail ->
-       try
-         connect_sockaddr ?bind ?timeout addr.ai_addr
-       with _ ->
-         connect_any ?bind ?timeout tail
-  in connect_any ?bind ?timeout (resolve_host host port)
+      | [] -> assert false
+      | [addr] ->
+          (* Let a possible error bubble up *)
+          connect_sockaddr ?bind ?timeout addr.ai_addr
+      | addr :: tail -> (
+          try connect_sockaddr ?bind ?timeout addr.ai_addr
+          with _ -> connect_any ?bind ?timeout tail)
+  in
+  connect_any ?bind ?timeout (resolve_host host port)
 
 let connect c source =
   if c.status <> PrivDisconnected then raise (Error Busy);
@@ -715,6 +712,6 @@ let send ?(offset = 0) ?length c x =
       let x =
         Printf.sprintf "%X\r\n%s\r\n" length (String.sub x offset length)
       in
-      write_data ~timeout:c.timeout d.transport x )
+      write_data ~timeout:c.timeout d.transport x)
   end
   else write_data ~offset ~length ~timeout:c.timeout d.transport x

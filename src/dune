@@ -11,4 +11,4 @@
    (osx-secure-transport -> cry_https.osx_secure_transport.ml)
    (-> cry_https.noop.ml)))
  (synopsis
-   "OCaml client for the various icecast & shoutcast source protocols"))
+  "OCaml client for the various icecast & shoutcast source protocols"))

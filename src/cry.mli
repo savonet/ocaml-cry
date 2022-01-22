@@ -63,9 +63,7 @@ exception Timeout
 (** Optional ssl module *)
 
 (** Register a transport module to be used for SSL connections. *)
-val register_https :
-  (host:string -> Unix.file_descr -> transport) ->
-  unit
+val register_https : (host:string -> Unix.file_descr -> transport) -> unit
 
 (** Get a string explaining an error. *)
 val string_of_error : exn -> string
