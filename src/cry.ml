@@ -593,7 +593,7 @@ let do_connect ?bind ?timeout host port =
 let connect c source =
   if c.status <> PrivDisconnected then raise (Error Busy);
   let port = if source.protocol = Icy then source.port + 1 else source.port in
-  let socket = do_connect ?bind:c.bind source.host port in
+  let socket = do_connect ?bind:c.bind ?timeout:c.connection_timeout source.host port in
   let transport =
     match source.protocol with
       | Icy | Http _ -> unix_transport socket
