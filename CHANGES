@@ -1,4 +1,4 @@
-0.6.6 (unreleased)
+0.6.6 (2022-01-30)
 ======
 * Add support for ipv6 connection,
   thanks to @gilou and @jcourreges (#6)
