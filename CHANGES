@@ -1,3 +1,8 @@
+0.6.7 (2022-03-18)
+=====
+* Default to ipv4 host resolution for backward
+  compatibility.
+
 0.6.6 (2022-01-30)
 ======
 * Add support for ipv6 connection,

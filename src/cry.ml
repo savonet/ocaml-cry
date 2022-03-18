@@ -429,7 +429,7 @@ let resolve_host host port =
     Unix.getaddrinfo host (string_of_int port) [AI_SOCKTYPE SOCK_STREAM]
   with
     | [] -> raise Not_found
-    | l -> l
+    | l -> List.rev l
 
 let add_host_header ?(force = false) headers host port =
   try
