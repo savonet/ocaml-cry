@@ -465,10 +465,11 @@ let connect_http c transport source verb =
     c.icy_cap <- true;
     c.status <- PrivConnected { connection = source; transport }
   with e ->
+    let bt = Printexc.get_raw_backtrace () in
     begin
       try close c with _ -> ()
     end;
-    raise e
+    Printexc.raise_with_backtrace e bt
 
 let icy_id_of_mount = function
   | Icy_id id -> id
@@ -517,10 +518,11 @@ let connect_icy c transport source =
     write_data ~timeout:c.timeout transport request;
     c.status <- PrivConnected { connection = source; transport }
   with e ->
+    let bt = Printexc.get_raw_backtrace () in
     begin
       try close c with _ -> ()
     end;
-    raise e
+    Printexc.raise_with_backtrace e bt
 
 let connect_sockaddr ?bind ?timeout sockaddr =
   let domain = Unix.domain_of_sockaddr sockaddr in
@@ -564,10 +566,11 @@ let connect_sockaddr ?bind ?timeout sockaddr =
   in
   try finish ()
   with e ->
+    let bt = Printexc.get_raw_backtrace () in
     begin
       try Unix.close socket with _ -> ()
     end;
-    raise e
+    Printexc.raise_with_backtrace e bt
 
 let do_connect ?bind ?timeout host port =
   let rec connect_any ?bind ?timeout (addrs : Unix.addr_info list) =
@@ -598,10 +601,11 @@ let connect c source =
       | Http verb | Https verb -> connect_http c transport source verb
       | Icy -> connect_icy c transport source
   with e ->
+    let bt = Printexc.get_raw_backtrace () in
     begin
       try transport.close () with _ -> ()
     end;
-    raise e
+    Printexc.raise_with_backtrace e bt
 
 let http_meta_request mount charset meta headers =
   let unique_headers = Hashtbl.create 10 in
@@ -675,10 +679,11 @@ let manual_update_metadata ~host ~port ~protocol ~user ~password ~mount
     if code <> 200 then raise (Error (Http_answer (code, s, v)));
     close ()
   with e ->
+    let bt = Printexc.get_raw_backtrace () in
     begin
       try close () with _ -> ()
     end;
-    raise e
+    Printexc.raise_with_backtrace e bt
 
 let update_metadata ?charset c m =
   if not c.icy_cap then raise (Error Invalid_usage);
