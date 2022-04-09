@@ -645,7 +645,7 @@ let manual_update_metadata ~host ~port ~protocol ~user ~password ~mount
                 | _ -> raise (Error Invalid_usage)
             in
             Hashtbl.replace headers "Authorization" (get_auth user password);
-            add_host_header headers host port;
+            Hashtbl.replace headers "Host" (Printf.sprintf "%s:%d" host port);
             http_meta_request mount charset meta headers
         | Icy ->
             let sid =

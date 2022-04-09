@@ -1,3 +1,7 @@
+0.6.8 (unreleased)
+=====
+* Simplify Host header logic, pass host through SSL SNI. Thanks to @N6UDP!
+
 0.6.7 (2022-03-18)
 =====
 * Default to ipv4 host resolution for backward
