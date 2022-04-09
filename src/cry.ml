@@ -431,13 +431,9 @@ let resolve_host host port =
     | [] -> raise Not_found
     | l -> List.rev l
 
-let add_host_header ?(force = false) headers host port =
-  try
-    ignore (resolve_host host port);
-    if force then Hashtbl.replace headers "Host" "" else Hashtbl.replace headers "Host" host
-  with Not_found ->
-    let host = if port = 80 || port = 443 then host else Printf.sprintf "%s:%d" host port in
-    Hashtbl.replace headers "Host" host
+let add_host_header headers host port =
+  let host = if port = 80 || port = 443 then host else Printf.sprintf "%s:%d" host port in
+  Hashtbl.replace headers "Host" host
 
 let http_path_of_mount = function
   | Icecast_mount mount -> mount
@@ -449,7 +445,7 @@ let connect_http c transport source verb =
     let http_version = if source.chunked then 1 else 0 in
     let headers = Hashtbl.copy source.headers in
     Hashtbl.replace headers "Authorization" auth;
-    add_host_header ~force:(http_version = 1) headers source.host source.port;
+    add_host_header headers source.host source.port;
     if source.chunked then Hashtbl.replace headers "Transfer-Encoding" "chunked" else
       if verb = Put then Hashtbl.add headers "Expect" "100-continue";
     let headers = header_string headers source in
