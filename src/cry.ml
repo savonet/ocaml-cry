@@ -434,9 +434,9 @@ let resolve_host host port =
 let add_host_header ?(force = false) headers host port =
   try
     ignore (resolve_host host port);
-    if force then Hashtbl.replace headers "Host" ""
+    if force then Hashtbl.replace headers "Host" "" else Hashtbl.replace headers "Host" host
   with Not_found ->
-    let host = if port = 80 then host else Printf.sprintf "%s:%d" host port in
+    let host = if port = 80 || port = 443 then host else Printf.sprintf "%s:%d" host port in
     Hashtbl.replace headers "Host" host
 
 let http_path_of_mount = function
