@@ -25,14 +25,14 @@ let () =
   Ssl.init ()
 
 let register fn =
-  let connect_ssl ~host:_ socket =
+  let connect_ssl ~host:hostname socket =
     let ctx = Ssl.create_context Ssl.SSLv23 Ssl.Client_context in
     (* SSL_VERIFY_NONE is default in shout. TODO: add option.. *)
     Ssl.set_verify ctx [] (Some Ssl.client_verify_callback);
     Ssl.set_verify_depth ctx 3;
     ignore (Ssl.set_default_verify_paths ctx);
     let ssl = Ssl.embed_socket socket ctx in
-    Ssl.set_client_SNI_hostname ssl ~host
+    Ssl.set_client_SNI_hostname ssl hostname; 
     Ssl.connect ssl;
     let shutdown () =
       Ssl.shutdown ssl;
