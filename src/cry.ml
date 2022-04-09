@@ -446,8 +446,8 @@ let connect_http c transport source verb =
     let headers = Hashtbl.copy source.headers in
     Hashtbl.replace headers "Authorization" auth;
     add_host_header headers source.host source.port;
-    if source.chunked then Hashtbl.replace headers "Transfer-Encoding" "chunked" else
-      if verb = Put then Hashtbl.add headers "Expect" "100-continue";
+    if source.chunked then Hashtbl.replace headers "Transfer-Encoding" "chunked";
+    if verb = Put then Hashtbl.add headers "Expect" "100-continue";
     let headers = header_string headers source in
     let request =
       http_header (string_of_verb verb)
