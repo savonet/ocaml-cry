@@ -431,9 +431,6 @@ let resolve_host host port =
     | [] -> raise Not_found
     | l -> List.rev l
 
-let add_host_header headers host port =
-  Hashtbl.replace headers "Host" (Printf.sprintf "%s:%d" host port)
-
 let http_path_of_mount = function
   | Icecast_mount mount -> mount
   | _ -> raise (Error Invalid_usage)
@@ -444,7 +441,7 @@ let connect_http c transport source verb =
     let http_version = if source.chunked then 1 else 0 in
     let headers = Hashtbl.copy source.headers in
     Hashtbl.replace headers "Authorization" auth;
-    add_host_header headers source.host source.port;
+    Hashtbl.replace headers "Host" (Printf.sprintf "%s:%d" source.host source.port);
     if source.chunked then Hashtbl.replace headers "Transfer-Encoding" "chunked";
     if verb = Put then Hashtbl.add headers "Expect" "100-continue";
     let headers = header_string headers source in
