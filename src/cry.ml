@@ -432,8 +432,7 @@ let resolve_host host port =
     | l -> List.rev l
 
 let add_host_header headers host port =
-  let host = if port = 80 || port = 443 then host else Printf.sprintf "%s:%d" host port in
-  Hashtbl.replace headers "Host" host
+  Hashtbl.replace headers "Host" (Printf.sprintf "%s:%d" host port)
 
 let http_path_of_mount = function
   | Icecast_mount mount -> mount
