@@ -32,6 +32,7 @@ let register fn =
     Ssl.set_verify_depth ctx 3;
     ignore (Ssl.set_default_verify_paths ctx);
     let ssl = Ssl.embed_socket socket ctx in
+    Ssl.set_client_SNI_hostname ssl ~host
     Ssl.connect ssl;
     let shutdown () =
       Ssl.shutdown ssl;
