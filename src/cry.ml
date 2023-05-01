@@ -20,38 +20,169 @@
 
 (** OCaml low level implementation of the shout source protocol. *)
 
-include Cry_common
+type error =
+  | Create of exn
+  | Connect of exn
+  | Close of exn
+  | Write of exn
+  | Read of exn
+  | Busy
+  | Ssl_unavailable
+  | Not_connected
+  | Invalid_usage
+  | Unknown_host of string
+  | Bad_answer of string option
+  | Http_answer of int * string * string
 
-let ssl = ref None
-let register_https fn = ssl := Some fn
+exception Error of error
+exception Timeout
 
-let () =
-  let callback fn = register_https (fun ~host socket -> fn ~host socket) in
-  Cry_https.register callback
+type operation = [ `Read | `Write | `Both ]
 
-let get_ssl () =
-  match !ssl with Some fn -> fn | None -> raise (Error Ssl_unavailable)
+type socket =
+  < typ : string
+  ; transport : transport
+  ; file_descr : Unix.file_descr
+  ; wait_for : ?log:(string -> unit) -> operation -> float -> unit
+  ; write : Bytes.t -> int -> int -> int
+  ; read : Bytes.t -> int -> int -> int
+  ; close : unit >
 
-let unix_transport socket =
-  let wait_for operation delay =
-    let events () =
-      match operation with
-        | `Read -> Unix.select [socket] [] [] delay
-        | `Write -> Unix.select [] [socket] [] delay
-        | `Both -> Unix.select [socket] [socket] [] delay
-    in
-    let r, w, _ = events () in
-    match operation with
-      | `Read -> r <> []
-      | `Write -> w <> []
-      | `Both -> r <> [] || w <> []
+and transport =
+  < name : string
+  ; protocol : string
+  ; default_port : int
+  ; connect : ?bind_address:string -> ?timeout:float -> string -> int -> socket
+  ; accept : Unix.file_descr -> socket * Unix.sockaddr >
+
+(* Wait for [`Read socker], [`Write socket] or [`Both socket] for at most
+ * [timeout] seconds on the given [socket]. Raises [Timeout] if timeout
+ * is reached. *)
+let wait_for ?(log = fun _ -> ()) event timeout =
+  let start_time = Unix.gettimeofday () in
+  let max_time = start_time +. timeout in
+  let r, w =
+    match event with
+      | `Read socket -> ([socket], [])
+      | `Write socket -> ([], [socket])
+      | `Both socket -> ([socket], [socket])
   in
-  {
-    write = Unix.write socket;
-    read = Unix.read socket;
-    wait_for;
-    close = (fun () -> Unix.close socket);
-  }
+  let rec wait t =
+    let r, w, _ =
+      try Unix.select r w [] t
+      with Unix.Unix_error (Unix.EINTR, _, _) -> ([], [], [])
+    in
+    if r = [] && w = [] then (
+      let current_time = Unix.gettimeofday () in
+      if current_time >= max_time then (
+        log "Timeout reached!";
+        raise Timeout)
+      else wait (min 1. (max_time -. current_time)))
+  in
+  wait (min 1. timeout)
+
+let unix_socket transport fd : socket =
+  object
+    method typ = "unix"
+    method file_descr = fd
+    method transport = transport
+
+    method wait_for ?log (operation : operation) d =
+      let event =
+        match operation with
+          | `Read -> `Read fd
+          | `Write -> `Write fd
+          | `Both -> `Both fd
+      in
+      wait_for ?log event d
+
+    method write = Unix.write fd
+    method read = Unix.read fd
+    method close = Unix.close fd
+  end
+
+let sockaddr_of_address address =
+  match Unix.getaddrinfo address "0" [AI_NUMERICHOST] with
+    | [] -> raise Not_found
+    | addr :: _ -> addr.ai_addr
+
+let resolve_host host port =
+  match
+    Unix.getaddrinfo host (string_of_int port) [AI_SOCKTYPE SOCK_STREAM]
+  with
+    | [] -> raise Not_found
+    | l -> List.rev l
+
+let connect_sockaddr ?bind_address ?timeout sockaddr =
+  let domain = Unix.domain_of_sockaddr sockaddr in
+  let socket = Unix.socket ~cloexec:true domain Unix.SOCK_STREAM 0 in
+  (try
+     match bind_address with
+       | None -> ()
+       | Some s -> Unix.bind socket (sockaddr_of_address s)
+   with exn ->
+     let bt = Printexc.get_raw_backtrace () in
+     begin
+       try Unix.close socket with _ -> ()
+     end;
+     Printexc.raise_with_backtrace exn bt);
+  let do_timeout = timeout <> None in
+  let check_timeout () =
+    match timeout with
+      | Some timeout ->
+          (* Block in a select call for [timeout] seconds. *)
+          let _, w, _ = Unix.select [] [socket] [] timeout in
+          if w = [] then raise Timeout;
+          Unix.clear_nonblock socket;
+          socket
+      | None -> assert false
+  in
+  let finish () =
+    try
+      if do_timeout then Unix.set_nonblock socket;
+      Unix.connect socket sockaddr;
+      if do_timeout then Unix.clear_nonblock socket;
+      socket
+    with
+      | Unix.Unix_error (Unix.EINPROGRESS, _, _) -> check_timeout ()
+      | Unix.Unix_error (Unix.EWOULDBLOCK, _, _) when Sys.os_type = "Win32" ->
+          check_timeout ()
+  in
+  try finish ()
+  with e ->
+    let bt = Printexc.get_raw_backtrace () in
+    begin
+      try Unix.close socket with _ -> ()
+    end;
+    Printexc.raise_with_backtrace e bt
+
+let connect ?bind_address ?timeout host port =
+  let rec connect_any ?bind_address ?timeout (addrs : Unix.addr_info list) =
+    match addrs with
+      | [] -> raise Not_found
+      | [addr] ->
+          (* Let a possible error bubble up *)
+          connect_sockaddr ?bind_address ?timeout addr.ai_addr
+      | addr :: tail -> (
+          try connect_sockaddr ?bind_address ?timeout addr.ai_addr
+          with _ -> connect_any ?bind_address ?timeout tail)
+  in
+  connect_any ?bind_address ?timeout (resolve_host host port)
+
+let unix_transport : transport =
+  object (self)
+    method name = "unix"
+    method protocol = "http"
+    method default_port = 80
+
+    method connect ?bind_address ?timeout host port =
+      let socket = connect ?bind_address ?timeout host port in
+      unix_socket self socket
+
+    method accept fd =
+      let fd, addr = Unix.accept ~cloexec:true fd in
+      (unix_socket self fd, addr)
+  end
 
 let rec string_of_error = function
   | Error (Create e) -> pp "could not initiate a new handler" e
@@ -83,12 +214,11 @@ let string_of_verb = function
   | Post -> "POST"
   | Source -> "SOURCE"
 
-type protocol = Icy | Http of verb | Https of verb
+type protocol = Icy | Http of verb
 
 let string_of_protocol = function
   | Icy -> "icy"
   | Http v -> Printf.sprintf "http(%s)" (string_of_verb v)
-  | Https v -> Printf.sprintf "https(%s)" (string_of_verb v)
 
 type content_type = string
 
@@ -139,7 +269,7 @@ type audio_info = (string, string) Hashtbl.t
 type metadata = (string, string) Hashtbl.t
 
 (* Metadata socket is only present if icy_cap is true *)
-type connection_data = { connection : connection; transport : transport }
+type connection_data = { connection : connection; socket : socket }
 type status_priv = PrivConnected of connection_data | PrivDisconnected
 type status = Connected of connection_data | Disconnected
 
@@ -147,6 +277,7 @@ type t = {
   timeout : float;
   connection_timeout : float option;
   bind : string option;
+  transport : transport;
   mutable icy_cap : bool;
   mutable status : status_priv;
   mutable chunked : bool;
@@ -157,24 +288,26 @@ let get_connection_data x =
     | PrivConnected d -> d
     | PrivDisconnected -> raise (Error Not_connected)
 
-let create ?bind ?connection_timeout ?(timeout = 30.) () =
+let create ?bind ?connection_timeout ?(timeout = 30.)
+    ?(transport = unix_transport) () =
   {
     timeout;
     connection_timeout;
+    transport;
     bind;
     icy_cap = false;
     status = PrivDisconnected;
     chunked = false;
   }
 
-let write_data ~timeout ?(offset = 0) ?length transport request =
+let write_data ~timeout ?(offset = 0) ?length (socket : socket) request =
   let request = Bytes.unsafe_of_string request in
   let len = match length with Some l -> l | None -> Bytes.length request in
   let rec write ofs =
-    if not (transport.wait_for `Write timeout) then raise Timeout;
+    socket#wait_for `Write timeout;
     let rem = len - ofs in
     if rem > 0 then (
-      let ret = transport.write request ofs rem in
+      let ret = socket#write request ofs rem in
       if ret = 0 then raise (Failure "connection closed.");
       if ret < rem then write (ofs + ret))
   in
@@ -183,8 +316,8 @@ let write_data ~timeout ?(offset = 0) ?length transport request =
 let close x =
   try
     let c = get_connection_data x in
-    if x.chunked then write_data ~timeout:x.timeout c.transport "0\r\n\r\n";
-    c.transport.close ();
+    if x.chunked then write_data ~timeout:x.timeout c.socket "0\r\n\r\n";
+    c.socket#close;
     x.chunked <- false;
     x.icy_cap <- false;
     x.status <- PrivDisconnected
@@ -216,9 +349,9 @@ let normalize_mount mount =
         Icecast_mount
           begin
             match mount with
-            | "" -> "/"
-            | mount ->
-                if mount.[0] = '/' then mount else Printf.sprintf "/%s" mount
+              | "" -> "/"
+              | mount ->
+                  if mount.[0] = '/' then mount else Printf.sprintf "/%s" mount
           end
     | _ -> mount
 
@@ -238,7 +371,7 @@ let connection ?user_agent ?name ?genre ?url ?public ?audio_info ?description
   in
   let x =
     match protocol with
-      | Http _ | Https _ ->
+      | Http _ ->
           let audio_info =
             match audio_info with
               | Some x ->
@@ -378,10 +511,10 @@ let buf = Bytes.create 1024
   * There should always be at least
   * one element in the resulting list.
   * If not, something bad happened. *)
-let read_data ~timeout transport =
-  if not (transport.wait_for `Read timeout) then raise Timeout;
+let read_data ~timeout (socket : socket) =
+  socket#wait_for `Read timeout;
   try
-    let ret = transport.read buf 0 1024 in
+    let ret = socket#read buf 0 1024 in
     (* split data *)
     let buf = Bytes.sub buf 0 ret in
     let rec f pos l =
@@ -419,29 +552,18 @@ let parse_http_answer s =
     | Scanf.Scan_failure s -> raise (Error (Bad_answer (Some s)))
     | _ -> raise (Error (Bad_answer None))
 
-let sockaddr_of_address address =
-  match Unix.getaddrinfo address "0" [AI_NUMERICHOST] with
-    | [] -> raise Not_found
-    | addr :: _ -> addr.ai_addr
-
-let resolve_host host port =
-  match
-    Unix.getaddrinfo host (string_of_int port) [AI_SOCKTYPE SOCK_STREAM]
-  with
-    | [] -> raise Not_found
-    | l -> List.rev l
-
 let http_path_of_mount = function
   | Icecast_mount mount -> mount
   | _ -> raise (Error Invalid_usage)
 
-let connect_http c transport source verb =
+let connect_http c (socket : socket) source verb =
   let auth = get_auth source.user source.password in
   try
     let http_version = if source.chunked then 1 else 0 in
     let headers = Hashtbl.copy source.headers in
     Hashtbl.replace headers "Authorization" auth;
-    Hashtbl.replace headers "Host" (Printf.sprintf "%s:%d" source.host source.port);
+    Hashtbl.replace headers "Host"
+      (Printf.sprintf "%s:%d" source.host source.port);
     if source.chunked then Hashtbl.replace headers "Transfer-Encoding" "chunked";
     if verb = Put then Hashtbl.add headers "Expect" "100-continue";
     let headers = header_string headers source in
@@ -450,20 +572,20 @@ let connect_http c transport source verb =
         (http_path_of_mount source.mount)
         http_version headers
     in
-    write_data ~timeout:c.timeout transport request;
+    write_data ~timeout:c.timeout socket request;
     (* Read input from socket. *)
-    let ret = read_data ~timeout:c.timeout transport in
+    let ret = read_data ~timeout:c.timeout socket in
     let v, code, s = parse_http_answer (Bytes.to_string (List.hd ret)) in
     let err = Error (Http_answer (code, s, v)) in
     begin
       match verb with
-      | Put when code <> 100 -> raise err
-      | v when v <> Put && (code < 200 || code >= 300) -> raise err
-      | _ -> ()
+        | Put when code <> 100 -> raise err
+        | v when v <> Put && (code < 200 || code >= 300) -> raise err
+        | _ -> ()
     end;
     c.chunked <- source.chunked;
     c.icy_cap <- true;
-    c.status <- PrivConnected { connection = source; transport }
+    c.status <- PrivConnected { connection = source; socket }
   with e ->
     let bt = Printexc.get_raw_backtrace () in
     begin
@@ -475,7 +597,7 @@ let icy_id_of_mount = function
   | Icy_id id -> id
   | _ -> raise (Error Invalid_usage)
 
-let connect_icy c transport source =
+let connect_icy c socket source =
   let password =
     let user =
       match source.user with "" -> "" | user -> Printf.sprintf "%s:" user
@@ -489,23 +611,23 @@ let connect_icy c transport source =
   in
   let request = Printf.sprintf "%s\r\n" password in
   try
-    write_data ~timeout:c.timeout transport request;
+    write_data ~timeout:c.timeout socket request;
     (* Read input from socket. *)
-    let ret = read_data ~timeout:c.timeout transport in
+    let ret = read_data ~timeout:c.timeout socket in
     let f s =
       if s.[0] <> 'O' && s.[1] <> 'K' then raise (Error (Bad_answer (Some s)))
     in
     begin
       try Scanf.sscanf (Bytes.to_string (List.hd ret)) "%[^\r^\n]" f with
-      | Scanf.Scan_failure s -> raise (Error (Bad_answer (Some s)))
-      | Error _ as e -> raise e
-      | _ -> raise (Error (Bad_answer None))
+        | Scanf.Scan_failure s -> raise (Error (Bad_answer (Some s)))
+        | Error _ as e -> raise e
+        | _ -> raise (Error (Bad_answer None))
     end;
     (* Read another line *)
     let ret =
       match ret with
         | _ :: y :: _ -> y
-        | _ -> List.hd (read_data ~timeout:c.timeout transport)
+        | _ -> List.hd (read_data ~timeout:c.timeout socket)
     in
     let f _ = c.icy_cap <- true in
     begin
@@ -515,8 +637,8 @@ let connect_icy c transport source =
     (* Now Write headers *)
     let headers = header_string source.headers source in
     let request = Printf.sprintf "%s\r\n\r\n" headers in
-    write_data ~timeout:c.timeout transport request;
-    c.status <- PrivConnected { connection = source; transport }
+    write_data ~timeout:c.timeout socket request;
+    c.status <- PrivConnected { connection = source; socket }
   with e ->
     let bt = Printexc.get_raw_backtrace () in
     begin
@@ -524,86 +646,23 @@ let connect_icy c transport source =
     end;
     Printexc.raise_with_backtrace e bt
 
-let connect_sockaddr ?bind ?timeout sockaddr =
-  let domain = Unix.domain_of_sockaddr sockaddr in
-  let socket =
-    try Unix.socket domain Unix.SOCK_STREAM 0
-    with e -> raise (Error (Create e))
-  in
-  begin
-    try
-      match bind with
-        | None -> ()
-        | Some s -> Unix.bind socket (sockaddr_of_address s)
-    with e ->
-      begin
-        try Unix.close socket with _ -> ()
-      end;
-      raise (Error (Create e))
-  end;
-  let do_timeout = timeout <> None in
-  let check_timeout () =
-    match timeout with
-      | Some timeout ->
-          (* Block in a select call for [timeout] seconds. *)
-          let _, w, _ = Unix.select [] [socket] [] timeout in
-          if w = [] then raise (Error (Connect Timeout));
-          Unix.clear_nonblock socket;
-          socket
-      | None -> assert false
-  in
-  let finish () =
-    try
-      if do_timeout then Unix.set_nonblock socket;
-      Unix.connect socket sockaddr;
-      if do_timeout then Unix.clear_nonblock socket;
-      socket
-    with
-      | Unix.Unix_error (Unix.EINPROGRESS, _, _) -> check_timeout ()
-      | Unix.Unix_error (Unix.EWOULDBLOCK, _, _) when Sys.os_type = "Win32" ->
-          check_timeout ()
-      | e -> raise (Error (Connect e))
-  in
-  try finish ()
-  with e ->
-    let bt = Printexc.get_raw_backtrace () in
-    begin
-      try Unix.close socket with _ -> ()
-    end;
-    Printexc.raise_with_backtrace e bt
-
-let do_connect ?bind ?timeout host port =
-  let rec connect_any ?bind ?timeout (addrs : Unix.addr_info list) =
-    match addrs with
-      | [] -> assert false
-      | [addr] ->
-          (* Let a possible error bubble up *)
-          connect_sockaddr ?bind ?timeout addr.ai_addr
-      | addr :: tail -> (
-          try connect_sockaddr ?bind ?timeout addr.ai_addr
-          with _ -> connect_any ?bind ?timeout tail)
-  in
-  connect_any ?bind ?timeout (resolve_host host port)
-
 let connect c source =
   if c.status <> PrivDisconnected then raise (Error Busy);
   let port = if source.protocol = Icy then source.port + 1 else source.port in
-  let socket = do_connect ?bind:c.bind ?timeout:c.connection_timeout source.host port in
-  let transport =
-    match source.protocol with
-      | Icy | Http _ -> unix_transport socket
-      | Https _ -> (get_ssl ()) ~host:source.host socket
+  let socket =
+    c.transport#connect ?bind_address:c.bind ?timeout:c.connection_timeout
+      source.host port
   in
   try
     (* We do not know icy capabilities so far.. *)
     c.icy_cap <- false;
     match source.protocol with
-      | Http verb | Https verb -> connect_http c transport source verb
-      | Icy -> connect_icy c transport source
+      | Http verb -> connect_http c socket source verb
+      | Icy -> connect_icy c socket source
   with e ->
     let bt = Printexc.get_raw_backtrace () in
     begin
-      try transport.close () with _ -> ()
+      try socket#close with _ -> ()
     end;
     Printexc.raise_with_backtrace e bt
 
@@ -619,18 +678,16 @@ let icy_meta_request =
   Printf.sprintf "GET /admin.cgi?mode=updinfo&pass=%s%s HTTP/1.0\r\n%s\r\n"
 
 let manual_update_metadata ~host ~port ~protocol ~user ~password ~mount
-    ?(connection_timeout = 5.) ?(timeout = 30.) ?headers ?bind ?charset m =
+    ?(connection_timeout = 5.) ?(timeout = 30.) ?headers ?bind ?charset
+    ?(transport = unix_transport) m =
   let mount = normalize_mount mount in
   let headers =
     match headers with Some x -> Hashtbl.copy x | None -> Hashtbl.create 0
   in
-  let socket = do_connect ?bind ~timeout:connection_timeout host port in
-  let transport =
-    match protocol with
-      | Icy | Http _ -> unix_transport socket
-      | Https _ -> (get_ssl ()) ~host socket
+  let socket =
+    transport#connect ?bind_address:bind ~timeout:connection_timeout host port
   in
-  let close () = try transport.close () with e -> raise (Error (Close e)) in
+  let close () = try socket#close with e -> raise (Error (Close e)) in
   try
     let charset =
       match charset with Some c -> Printf.sprintf "&charset=%s" c | None -> ""
@@ -642,7 +699,7 @@ let manual_update_metadata ~host ~port ~protocol ~user ~password ~mount
     let meta = Hashtbl.fold f m "" in
     let request =
       match protocol with
-        | Http _ | Https _ ->
+        | Http _ ->
             let mount =
               match mount with
                 | Icecast_mount mount -> mount
@@ -672,9 +729,9 @@ let manual_update_metadata ~host ~port ~protocol ~user ~password ~mount
             in
             icy_meta_request password meta user_agent
     in
-    write_data ~timeout transport request;
+    write_data ~timeout socket request;
     (* Read input from socket. *)
-    let ret = read_data ~timeout transport in
+    let ret = read_data ~timeout socket in
     let v, code, s = parse_http_answer (Bytes.to_string (List.hd ret)) in
     if code <> 200 then raise (Error (Http_answer (code, s, v)));
     close ()
@@ -709,6 +766,6 @@ let send ?(offset = 0) ?length c x =
       let x =
         Printf.sprintf "%X\r\n%s\r\n" length (String.sub x offset length)
       in
-      write_data ~timeout:c.timeout d.transport x)
+      write_data ~timeout:c.timeout d.socket x)
   end
-  else write_data ~offset ~length ~timeout:c.timeout d.transport x
+  else write_data ~offset ~length ~timeout:c.timeout d.socket x
