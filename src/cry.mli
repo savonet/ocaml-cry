@@ -33,14 +33,23 @@
 
 (** {2 Types and errors} *)
 
-type operation = [ `Read | `Write | `Both ]
+type event = [ `Read | `Write | `Both ]
 
-type transport = {
-  write : Bytes.t -> int -> int -> int;
-  read : Bytes.t -> int -> int -> int;
-  wait_for : operation -> float -> bool;
-  close : unit -> unit;
-}
+type socket =
+  < typ : string
+  ; transport : transport
+  ; file_descr : Unix.file_descr
+  ; wait_for : ?log:(string -> unit) -> event -> float -> unit
+  ; write : Bytes.t -> int -> int -> int
+  ; read : Bytes.t -> int -> int -> int
+  ; close : unit >
+
+and transport =
+  < name : string
+  ; protocol : string
+  ; default_port : int
+  ; connect : ?bind_address:string -> ?timeout:float -> string -> int -> socket
+  ; accept : Unix.file_descr -> socket * Unix.sockaddr >
 
 (** Possible errors. *)
 type error =
@@ -60,10 +69,14 @@ type error =
 exception Error of error
 exception Timeout
 
-(** Optional ssl module *)
+(** Base unix connect *)
+val unix_connect :
+  ?bind_address:string -> ?timeout:float -> string -> int -> Unix.file_descr
 
-(** Register a transport module to be used for SSL connections. *)
-val register_https : (host:string -> Unix.file_descr -> transport) -> unit
+(** Unix transport and socket. *)
+val unix_transport : transport
+
+val unix_socket : Unix.file_descr -> socket
 
 (** Get a string explaining an error. *)
 val string_of_error : exn -> string
@@ -73,12 +86,11 @@ type verb = Put | Post | Source
 
 (** Possible protocols. [Icy] is the (undocumented) shoutcast source protocol.
   * [Http] is the icecast2 source protocol. 
-  * [Https] is the icecast2 source protocol with TLS connection.
   * 
   * Ogg streaming is only possible with [Http]. Any headerless format,
   * (e.g. mpeg containers), should work with both protocols,
   * provided you set the correct content-type (mime) for the source. *)
-type protocol = Icy | Http of verb | Https of verb
+type protocol = Icy | Http of verb
 
 (** Return a string representation of a protocol. *)
 val string_of_protocol : protocol -> string
@@ -135,7 +147,7 @@ type audio_info = (string, string) Hashtbl.t
 type metadata = (string, string) Hashtbl.t
 
 (* Type for connection data *)
-type connection_data = { connection : connection; transport : transport }
+type connection_data = { connection : connection; socket : socket }
 
 (** Type for the status of a handler. *)
 type status = Connected of connection_data | Disconnected
@@ -150,7 +162,12 @@ type t
   * [bind] is not used by default (system default). 
   * [timeout] is [30.] by default. *)
 val create :
-  ?bind:string -> ?connection_timeout:float -> ?timeout:float -> unit -> t
+  ?bind_address:string ->
+  ?connection_timeout:float ->
+  ?timeout:float ->
+  ?transport:transport ->
+  unit ->
+  t
 
 (** Get a handler's status *)
 val get_status : t -> status
@@ -252,8 +269,9 @@ val manual_update_metadata :
   ?connection_timeout:float ->
   ?timeout:float ->
   ?headers:(string, string) Hashtbl.t ->
-  ?bind:string ->
+  ?bind_address:string ->
   ?charset:string ->
+  ?transport:transport ->
   metadata ->
   unit
 

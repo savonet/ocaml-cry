@@ -8,7 +8,7 @@ let connection =
   let channels = 2 in
   let samplerate = 44100 in
   let bitrate = 128 in
-  let protocol = Https Put in
+  let protocol = Http Put in
   let audio_info = audio_info ~channels ~samplerate ~bitrate () in
   {
     (connection ~audio_info ~protocol ~mount ~content_type ()) with

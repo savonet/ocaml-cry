@@ -1,6 +1,7 @@
-0.6.8 (unreleased)
+1.0.0 (unreleased)
 =====
 * Simplify Host header logic, pass host through SSL SNI. Thanks to @N6UDP!
+* Rewrote transport logic to be more flexible. Leave SSL implementation to caller.
 
 0.6.7 (2022-03-18)
 =====
