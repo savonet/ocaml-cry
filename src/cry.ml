@@ -37,13 +37,13 @@ type error =
 exception Error of error
 exception Timeout
 
-type operation = [ `Read | `Write | `Both ]
+type event = [ `Read | `Write | `Both ]
 
 type socket =
   < typ : string
   ; transport : transport
   ; file_descr : Unix.file_descr
-  ; wait_for : ?log:(string -> unit) -> operation -> float -> unit
+  ; wait_for : ?log:(string -> unit) -> event -> float -> unit
   ; write : Bytes.t -> int -> int -> int
   ; read : Bytes.t -> int -> int -> int
   ; close : unit >
@@ -87,9 +87,9 @@ let unix_socket transport fd : socket =
     method file_descr = fd
     method transport = transport
 
-    method wait_for ?log (operation : operation) d =
+    method wait_for ?log (event : event) d =
       let event =
-        match operation with
+        match event with
           | `Read -> `Read fd
           | `Write -> `Write fd
           | `Both -> `Both fd
@@ -156,7 +156,7 @@ let connect_sockaddr ?bind_address ?timeout sockaddr =
     end;
     Printexc.raise_with_backtrace e bt
 
-let connect ?bind_address ?timeout host port =
+let unix_connect ?bind_address ?timeout host port =
   let rec connect_any ?bind_address ?timeout (addrs : Unix.addr_info list) =
     match addrs with
       | [] -> raise Not_found
@@ -176,13 +176,15 @@ let unix_transport : transport =
     method default_port = 80
 
     method connect ?bind_address ?timeout host port =
-      let socket = connect ?bind_address ?timeout host port in
+      let socket = unix_connect ?bind_address ?timeout host port in
       unix_socket self socket
 
     method accept fd =
       let fd, addr = Unix.accept ~cloexec:true fd in
       (unix_socket self fd, addr)
   end
+
+let unix_socket = unix_socket unix_transport
 
 let rec string_of_error = function
   | Error (Create e) -> pp "could not initiate a new handler" e
@@ -276,7 +278,7 @@ type status = Connected of connection_data | Disconnected
 type t = {
   timeout : float;
   connection_timeout : float option;
-  bind : string option;
+  bind_address : string option;
   transport : transport;
   mutable icy_cap : bool;
   mutable status : status_priv;
@@ -288,13 +290,13 @@ let get_connection_data x =
     | PrivConnected d -> d
     | PrivDisconnected -> raise (Error Not_connected)
 
-let create ?bind ?connection_timeout ?(timeout = 30.)
+let create ?bind_address ?connection_timeout ?(timeout = 30.)
     ?(transport = unix_transport) () =
   {
     timeout;
     connection_timeout;
     transport;
-    bind;
+    bind_address;
     icy_cap = false;
     status = PrivDisconnected;
     chunked = false;
@@ -650,8 +652,8 @@ let connect c source =
   if c.status <> PrivDisconnected then raise (Error Busy);
   let port = if source.protocol = Icy then source.port + 1 else source.port in
   let socket =
-    c.transport#connect ?bind_address:c.bind ?timeout:c.connection_timeout
-      source.host port
+    c.transport#connect ?bind_address:c.bind_address
+      ?timeout:c.connection_timeout source.host port
   in
   try
     (* We do not know icy capabilities so far.. *)
@@ -678,14 +680,14 @@ let icy_meta_request =
   Printf.sprintf "GET /admin.cgi?mode=updinfo&pass=%s%s HTTP/1.0\r\n%s\r\n"
 
 let manual_update_metadata ~host ~port ~protocol ~user ~password ~mount
-    ?(connection_timeout = 5.) ?(timeout = 30.) ?headers ?bind ?charset
+    ?(connection_timeout = 5.) ?(timeout = 30.) ?headers ?bind_address ?charset
     ?(transport = unix_transport) m =
   let mount = normalize_mount mount in
   let headers =
     match headers with Some x -> Hashtbl.copy x | None -> Hashtbl.create 0
   in
   let socket =
-    transport#connect ?bind_address:bind ~timeout:connection_timeout host port
+    transport#connect ?bind_address ~timeout:connection_timeout host port
   in
   let close () = try socket#close with e -> raise (Error (Close e)) in
   try

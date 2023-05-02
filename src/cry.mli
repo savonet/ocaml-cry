@@ -33,13 +33,13 @@
 
 (** {2 Types and errors} *)
 
-type operation = [ `Read | `Write | `Both ]
+type event = [ `Read | `Write | `Both ]
 
 type socket =
   < typ : string
   ; transport : transport
   ; file_descr : Unix.file_descr
-  ; wait_for : ?log:(string -> unit) -> operation -> float -> unit
+  ; wait_for : ?log:(string -> unit) -> event -> float -> unit
   ; write : Bytes.t -> int -> int -> int
   ; read : Bytes.t -> int -> int -> int
   ; close : unit >
@@ -68,6 +68,15 @@ type error =
 
 exception Error of error
 exception Timeout
+
+(** Base unix connect *)
+val unix_connect :
+  ?bind_address:string -> ?timeout:float -> string -> int -> Unix.file_descr
+
+(** Unix transport and socket. *)
+val unix_transport : transport
+
+val unix_socket : Unix.file_descr -> socket
 
 (** Get a string explaining an error. *)
 val string_of_error : exn -> string
@@ -153,7 +162,7 @@ type t
   * [bind] is not used by default (system default). 
   * [timeout] is [30.] by default. *)
 val create :
-  ?bind:string ->
+  ?bind_address:string ->
   ?connection_timeout:float ->
   ?timeout:float ->
   ?transport:transport ->
@@ -260,7 +269,7 @@ val manual_update_metadata :
   ?connection_timeout:float ->
   ?timeout:float ->
   ?headers:(string, string) Hashtbl.t ->
-  ?bind:string ->
+  ?bind_address:string ->
   ?charset:string ->
   ?transport:transport ->
   metadata ->
