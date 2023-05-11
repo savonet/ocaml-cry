@@ -48,8 +48,7 @@ and transport =
   < name : string
   ; protocol : string
   ; default_port : int
-  ; connect : ?bind_address:string -> ?timeout:float -> string -> int -> socket
-  ; accept : Unix.file_descr -> socket * Unix.sockaddr >
+  ; connect : ?bind_address:string -> ?timeout:float -> string -> int -> socket >
 
 (** Possible errors. *)
 type error =

@@ -52,8 +52,7 @@ and transport =
   < name : string
   ; protocol : string
   ; default_port : int
-  ; connect : ?bind_address:string -> ?timeout:float -> string -> int -> socket
-  ; accept : Unix.file_descr -> socket * Unix.sockaddr >
+  ; connect : ?bind_address:string -> ?timeout:float -> string -> int -> socket >
 
 (* Wait for [`Read socker], [`Write socket] or [`Both socket] for at most
  * [timeout] seconds on the given [socket]. Raises [Timeout] if timeout
@@ -178,10 +177,6 @@ let unix_transport : transport =
     method connect ?bind_address ?timeout host port =
       let socket = unix_connect ?bind_address ?timeout host port in
       unix_socket self socket
-
-    method accept fd =
-      let fd, addr = Unix.accept ~cloexec:true fd in
-      (unix_socket self fd, addr)
   end
 
 let unix_socket = unix_socket unix_transport
