@@ -13,5 +13,5 @@
  (name cry)
  (synopsis "OCaml client for the various icecast & shoutcast source protocols")
  (description "The cry library is an implementation of the various icecast & shoutcast protocols to connect to streaming servers such as icecast")
- (depends dune)
+ (depends dune base-bytes)
 )

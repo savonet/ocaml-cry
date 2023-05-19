@@ -11,6 +11,7 @@ homepage: "https://github.com/savonet/ocaml-cry"
 bug-reports: "https://github.com/savonet/ocaml-cry/issues"
 depends: [
   "dune" {>= "2.8"}
+  "base-bytes"
   "odoc" {with-doc}
 ]
 build: [
