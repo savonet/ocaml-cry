@@ -105,12 +105,20 @@ let sockaddr_of_address address =
     | [] -> raise Not_found
     | addr :: _ -> addr.ai_addr
 
+let addrinfo_order = function
+  | Unix.ADDR_UNIX _ -> 2
+  | Unix.ADDR_INET (s, _) -> if Unix.is_inet6_addr s then 1 else 0
+
 let resolve_host host port =
   match
     Unix.getaddrinfo host (string_of_int port) [AI_SOCKTYPE SOCK_STREAM]
   with
     | [] -> raise Not_found
-    | l -> List.rev l
+    | l ->
+        List.sort
+          (fun { Unix.ai_addr = s; _ } { Unix.ai_addr = s'; _ } ->
+            Stdlib.compare (addrinfo_order s) (addrinfo_order s'))
+          l
 
 let connect_sockaddr ?bind_address ?timeout sockaddr =
   let domain = Unix.domain_of_sockaddr sockaddr in
