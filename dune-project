@@ -2,7 +2,7 @@
 (version 1.0.0)
 (name cry)
 (source (github savonet/ocaml-cry))
-(license GPL-2.0)
+(license GPL-2.0-only)
 (authors "Romain Beauxis <toots@rastageeks.org>")
 (maintainers "The Savonet Team <savonet-users@lists.sourceforge.net>")
 
