@@ -1,4 +1,4 @@
-1.0.0 (unreleased)
+1.0.0 (2023-06-27)
 =====
 * Simplify Host header logic, pass host through SSL SNI. Thanks to @N6UDP!
 * Rewrote transport logic to be more flexible. Leave SSL implementation to caller.
