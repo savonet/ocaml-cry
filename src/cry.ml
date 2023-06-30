@@ -759,9 +759,10 @@ let update_metadata ?charset c m =
   let mount = source.mount in
   let host = source.host in
   let timeout = c.timeout in
+  let transport = c.transport in
   let connection_timeout = c.connection_timeout in
   manual_update_metadata ~host ~port ~protocol ~user ~password ~timeout ~mount
-    ?headers ?connection_timeout ?charset m
+    ~transport ?headers ?connection_timeout ?charset m
 
 let send ?(offset = 0) ?length c x =
   let length = match length with Some l -> l | None -> String.length x in
