@@ -1,6 +1,6 @@
 1.0.1 (2023-07-01)
 =====
-* Fix missing wrong transport being used when updating metadata.
+* Fix wrong transport being used when updating metadata.
 
 1.0.0 (2023-06-27)
 =====
