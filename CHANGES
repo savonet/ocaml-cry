@@ -1,3 +1,7 @@
+1.0.1 (2023-07-01)
+=====
+* Fix missing wrong transport being used when updating metadata.
+
 1.0.0 (2023-06-27)
 =====
 * Simplify Host header logic, pass host through SSL SNI. Thanks to @N6UDP!
