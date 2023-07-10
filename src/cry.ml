@@ -20,6 +20,26 @@
 
 (** OCaml low level implementation of the shout source protocol. *)
 
+external poll :
+  Unix.file_descr array ->
+  Unix.file_descr array ->
+  Unix.file_descr array ->
+  float ->
+  Unix.file_descr array * Unix.file_descr array * Unix.file_descr array
+  = "caml_cry_poll"
+
+let poll r w e timeout =
+  let r = Array.of_list r in
+  let w = Array.of_list w in
+  let e = Array.of_list e in
+  let r, w, e = poll r w e timeout in
+  (Array.to_list r, Array.to_list w, Array.to_list e)
+
+let select =
+  match Sys.os_type with
+    | "Unix" -> poll
+    | _ -> Unix.select
+
 type error =
   | Create of exn
   | Connect of exn
@@ -68,7 +88,7 @@ let wait_for ?(log = fun _ -> ()) event timeout =
   in
   let rec wait t =
     let r, w, _ =
-      try Unix.select r w [] t
+      try select r w [] t
       with Unix.Unix_error (Unix.EINTR, _, _) -> ([], [], [])
     in
     if r = [] && w = [] then (
@@ -138,7 +158,7 @@ let connect_sockaddr ?bind_address ?timeout sockaddr =
     match timeout with
       | Some timeout ->
           (* Block in a select call for [timeout] seconds. *)
-          let _, w, _ = Unix.select [] [socket] [] timeout in
+          let _, w, _ = select [] [socket] [] timeout in
           if w = [] then raise Timeout;
           Unix.clear_nonblock socket;
           socket

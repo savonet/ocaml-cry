@@ -1,3 +1,7 @@
+1.0.2 (unreleased)
+======
+* Use `poll` for select when available.
+
 1.0.1 (2023-07-01)
 =====
 * Fix wrong transport being used when updating metadata.
