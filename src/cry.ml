@@ -35,10 +35,7 @@ let poll r w e timeout =
   let r, w, e = poll r w e timeout in
   (Array.to_list r, Array.to_list w, Array.to_list e)
 
-let select =
-  match Sys.os_type with
-    | "Unix" -> poll
-    | _ -> Unix.select
+let select = match Sys.os_type with "Unix" -> poll | _ -> Unix.select
 
 type error =
   | Create of exn
@@ -341,11 +338,13 @@ let write_data ~timeout ?(offset = 0) ?length (socket : socket) request =
 let close x =
   try
     let c = get_connection_data x in
-    if x.chunked then write_data ~timeout:x.timeout c.socket "0\r\n\r\n";
-    c.socket#close;
-    x.chunked <- false;
-    x.icy_cap <- false;
-    x.status <- PrivDisconnected
+    Fun.protect
+      ~finally:(fun () -> c.socket#close)
+      (fun () ->
+        if x.chunked then write_data ~timeout:x.timeout c.socket "0\r\n\r\n";
+        x.chunked <- false;
+        x.icy_cap <- false;
+        x.status <- PrivDisconnected)
   with
     | Error _ as e -> raise e
     | e -> raise (Error (Close e))
