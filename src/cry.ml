@@ -69,7 +69,13 @@ and transport =
   < name : string
   ; protocol : string
   ; default_port : int
-  ; connect : ?bind_address:string -> ?timeout:float -> string -> int -> socket >
+  ; connect :
+      ?bind_address:string ->
+      ?timeout:float ->
+      ?prefer:[ `System_default | `Ipv4 | `Ipv6 ] ->
+      string ->
+      int ->
+      socket >
 
 (* Wait for [`Read socker], [`Write socket] or [`Both socket] for at most
  * [timeout] seconds on the given [socket]. Raises [Timeout] if timeout
@@ -204,8 +210,8 @@ let unix_transport : transport =
     method protocol = "http"
     method default_port = 80
 
-    method connect ?bind_address ?timeout host port =
-      let socket = unix_connect ?bind_address ?timeout host port in
+    method connect ?bind_address ?timeout ?prefer host port =
+      let socket = unix_connect ?bind_address ?timeout ?prefer host port in
       unix_socket self socket
   end
 
