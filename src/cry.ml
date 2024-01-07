@@ -123,18 +123,23 @@ let sockaddr_of_address address =
     | addr :: _ -> addr.ai_addr
 
 let addrinfo_order = function
-  | Unix.ADDR_UNIX _ -> 2
-  | Unix.ADDR_INET (s, _) -> if Unix.is_inet6_addr s then 1 else 0
+  | _, Unix.ADDR_UNIX _ -> 2
+  | `Ipv4, Unix.ADDR_INET (s, _) -> if Unix.is_inet6_addr s then 1 else 0
+  | `Ipv6, Unix.ADDR_INET (s, _) -> if Unix.is_inet6_addr s then 0 else 1
 
-let resolve_host host port =
+let resolve_host ~prefer host port =
   match
-    Unix.getaddrinfo host (string_of_int port) [AI_SOCKTYPE SOCK_STREAM]
+    ( prefer,
+      Unix.getaddrinfo host (string_of_int port) [AI_SOCKTYPE SOCK_STREAM] )
   with
-    | [] -> raise Not_found
-    | l ->
+    | _, [] -> raise Not_found
+    | `System_default, l -> l
+    | ((`Ipv4, l) as v) | ((`Ipv6, l) as v) ->
         List.sort
           (fun { Unix.ai_addr = s; _ } { Unix.ai_addr = s'; _ } ->
-            Stdlib.compare (addrinfo_order s) (addrinfo_order s'))
+            Stdlib.compare
+              (addrinfo_order (fst v, s))
+              (addrinfo_order (fst v, s')))
           l
 
 let connect_sockaddr ?bind_address ?timeout sockaddr =
@@ -180,7 +185,7 @@ let connect_sockaddr ?bind_address ?timeout sockaddr =
     end;
     Printexc.raise_with_backtrace e bt
 
-let unix_connect ?bind_address ?timeout host port =
+let unix_connect ?bind_address ?timeout ?(prefer = `System_default) host port =
   let rec connect_any ?bind_address ?timeout (addrs : Unix.addr_info list) =
     match addrs with
       | [] -> raise Not_found
@@ -191,7 +196,7 @@ let unix_connect ?bind_address ?timeout host port =
           try connect_sockaddr ?bind_address ?timeout addr.ai_addr
           with _ -> connect_any ?bind_address ?timeout tail)
   in
-  connect_any ?bind_address ?timeout (resolve_host host port)
+  connect_any ?bind_address ?timeout (resolve_host ~prefer host port)
 
 let unix_transport : transport =
   object (self)

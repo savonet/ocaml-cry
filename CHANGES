@@ -2,6 +2,8 @@
 ======
 * Use `poll` for select when available.
 * Make sure `close` call always closes the socket.
+* Add option to prevert ipv4 over ipv6. Defer to system
+  defaults otherwise.
 
 1.0.1 (2023-07-01)
 =====

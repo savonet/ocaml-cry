@@ -70,7 +70,12 @@ exception Timeout
 
 (** Base unix connect *)
 val unix_connect :
-  ?bind_address:string -> ?timeout:float -> string -> int -> Unix.file_descr
+  ?bind_address:string ->
+  ?timeout:float ->
+  ?prefer:[ `System_default | `Ipv4 | `Ipv6 ] ->
+  string ->
+  int ->
+  Unix.file_descr
 
 (** Unix transport and socket. *)
 val unix_transport : transport
