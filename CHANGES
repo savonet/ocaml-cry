@@ -1,4 +1,4 @@
-1.0.2 (unreleased)
+1.0.2 (2024-01-08)
 ======
 * Use `poll` for select when available.
 * Make sure `close` call always closes the socket.
