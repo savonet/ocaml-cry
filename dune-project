@@ -1,5 +1,5 @@
 (lang dune 2.8)
-(version 1.0.2)
+(version 1.0.3)
 (name cry)
 (source (github savonet/ocaml-cry))
 (license GPL-2.0-only)

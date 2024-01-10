@@ -163,14 +163,15 @@ let connect_sockaddr ?bind_address ?timeout sockaddr =
      Printexc.raise_with_backtrace exn bt);
   let do_timeout = timeout <> None in
   let check_timeout () =
-    match timeout with
-      | Some timeout ->
-          (* Block in a select call for [timeout] seconds. *)
-          let _, w, _ = select [] [socket] [] timeout in
-          if w = [] then raise Timeout;
+    let timeout = Option.get timeout in
+    (* Block in a select call for [timeout] seconds. *)
+    let _, w, _ = select [] [socket] [] timeout in
+    if w = [] then raise Timeout;
+    match Unix.getsockopt_error socket with
+      | Some err -> raise (Unix.Unix_error (err, "connect", ""))
+      | None ->
           Unix.clear_nonblock socket;
           socket
-      | None -> assert false
   in
   let finish () =
     try
