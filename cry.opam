@@ -12,7 +12,6 @@ bug-reports: "https://github.com/savonet/ocaml-cry/issues"
 depends: [
   "ocaml" {>= "4.12.0"}
   "dune" {>= "2.8"}
-  "poll"
   "base-bytes"
   "odoc" {with-doc}
 ]
