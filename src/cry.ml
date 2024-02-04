@@ -20,30 +20,28 @@
 
 (** OCaml low level implementation of the shout source protocol. *)
 
-let poll =
+let poll r w timeout =
+  let timeout =
+    match timeout with
+      | x when x < 0. -> Poll.Timeout.never
+      | 0. -> Poll.Timeout.immediate
+      | x ->
+          let frac, int = modf x in
+          let int = Int64.mul (Int64.of_float int) 1_000_000_000L in
+          let frac = Int64.of_float (frac *. 1_000_000_000.) in
+          let timeout = Int64.add int frac in
+          Poll.Timeout.after timeout
+  in
   let poll = Poll.create () in
-  fun r w timeout ->
-    let timeout =
-      match timeout with
-        | x when x < 0. -> Poll.Timeout.never
-        | 0. -> Poll.Timeout.immediate
-        | x ->
-            let frac, int = modf x in
-            let int = Int64.mul (Int64.of_float int) 1_000_000_000L in
-            let frac = Int64.of_float (frac *. 1_000_000_000.) in
-            let timeout = Int64.add int frac in
-            Poll.Timeout.after timeout
-    in
-    Poll.clear poll;
-    List.iter (fun fd -> Poll.set poll fd Poll.Event.read) r;
-    List.iter (fun fd -> Poll.set poll fd Poll.Event.write) w;
-    ignore (Poll.wait poll timeout);
-    let r = ref [] in
-    let w = ref [] in
-    Poll.iter_ready poll ~f:(fun fd event ->
-        if event.Poll.Event.readable then r := fd :: !r;
-        if event.Poll.Event.writable then w := fd :: !w);
-    (!r, !w)
+  List.iter (fun fd -> Poll.set poll fd Poll.Event.read) r;
+  List.iter (fun fd -> Poll.set poll fd Poll.Event.write) w;
+  ignore (Poll.wait poll timeout);
+  let r = ref [] in
+  let w = ref [] in
+  Poll.iter_ready poll ~f:(fun fd event ->
+      if event.Poll.Event.readable then r := fd :: !r;
+      if event.Poll.Event.writable then w := fd :: !w);
+  (!r, !w)
 
 type error =
   | Create of exn
