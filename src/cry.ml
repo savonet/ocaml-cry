@@ -34,16 +34,18 @@ let poll =
             let timeout = Int64.add int frac in
             Poll.Timeout.after timeout
     in
-    Poll.clear poll;
     List.iter (fun fd -> Poll.set poll fd Poll.Event.read) r;
     List.iter (fun fd -> Poll.set poll fd Poll.Event.write) w;
-    ignore (Poll.wait poll timeout);
-    let r = ref [] in
-    let w = ref [] in
-    Poll.iter_ready poll ~f:(fun fd event ->
-        if event.Poll.Event.readable then r := fd :: !r;
-        if event.Poll.Event.writable then w := fd :: !w);
-    (!r, !w)
+    Fun.protect
+      (fun () ->
+        ignore (Poll.wait poll timeout);
+        let r = ref [] in
+        let w = ref [] in
+        Poll.iter_ready poll ~f:(fun fd -> function
+          | { Poll.Event.readable = true; _ } -> r := fd :: !r
+          | _ -> w := fd :: !w);
+        (!r, !w))
+      ~finally:(fun () -> Poll.clear poll)
 
 type error =
   | Create of exn
