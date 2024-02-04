@@ -20,22 +20,35 @@
 
 (** OCaml low level implementation of the shout source protocol. *)
 
-external poll :
-  Unix.file_descr array ->
-  Unix.file_descr array ->
-  Unix.file_descr array ->
-  float ->
-  Unix.file_descr array * Unix.file_descr array * Unix.file_descr array
-  = "caml_cry_poll"
-
-let poll r w e timeout =
-  let r = Array.of_list r in
-  let w = Array.of_list w in
-  let e = Array.of_list e in
-  let r, w, e = poll r w e timeout in
-  (Array.to_list r, Array.to_list w, Array.to_list e)
-
-let select = match Sys.os_type with "Unix" -> poll | _ -> Unix.select
+let poll r w timeout =
+  let timeout =
+    match timeout with
+      | x when x < 0. -> Poll.Timeout.never
+      | 0. -> Poll.Timeout.immediate
+      | x ->
+          let frac, int = modf x in
+          let int = Int64.mul (Int64.of_float int) 1_000_000_000L in
+          let frac = Int64.of_float (frac *. 1_000_000_000.) in
+          let timeout = Int64.add int frac in
+          Poll.Timeout.after timeout
+  in
+  let poll = Poll.create () in
+  let read_write, read = List.partition (fun fd -> List.mem fd w) r in
+  let write_read, write =
+    List.partition (fun fd -> List.mem fd r && not (List.mem fd read_write)) w
+  in
+  List.iter (fun fd -> Poll.set poll fd Poll.Event.read) read;
+  List.iter (fun fd -> Poll.set poll fd Poll.Event.write) write;
+  List.iter
+    (fun fd -> Poll.set poll fd Poll.Event.read_write)
+    (read_write @ write_read);
+  ignore (Poll.wait poll timeout);
+  let r = ref [] in
+  let w = ref [] in
+  Poll.iter_ready poll ~f:(fun fd event ->
+      if event.Poll.Event.readable then r := fd :: !r;
+      if event.Poll.Event.writable then w := fd :: !w);
+  (!r, !w)
 
 type error =
   | Create of exn
@@ -90,9 +103,8 @@ let wait_for ?(log = fun _ -> ()) event timeout =
       | `Both socket -> ([socket], [socket])
   in
   let rec wait t =
-    let r, w, _ =
-      try select r w [] t
-      with Unix.Unix_error (Unix.EINTR, _, _) -> ([], [], [])
+    let r, w =
+      try poll r w t with Unix.Unix_error (Unix.EINTR, _, _) -> ([], [])
     in
     if r = [] && w = [] then (
       let current_time = Unix.gettimeofday () in
@@ -164,8 +176,8 @@ let connect_sockaddr ?bind_address ?timeout sockaddr =
   let do_timeout = timeout <> None in
   let check_timeout () =
     let timeout = Option.get timeout in
-    (* Block in a select call for [timeout] seconds. *)
-    let _, w, _ = select [] [socket] [] timeout in
+    (* Block in a poll call for [timeout] seconds. *)
+    let _, w = poll [] [socket] timeout in
     if w = [] then raise Timeout;
     match Unix.getsockopt_error socket with
       | Some err -> raise (Unix.Unix_error (err, "connect", ""))
