@@ -1,4 +1,4 @@
-1.0.3 (2024-03-14)
+1.0.3 (2024-03-18)
 =====
 * Raise a proper error when non-blocking connection
   fails.
