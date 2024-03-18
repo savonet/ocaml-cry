@@ -109,7 +109,7 @@ CAMLprim value caml_cry_poll(value _read, value _write, value _err,
       nwrite++;
     }
     if (fds[n].revents & POLLERR) {
-      Store_field(_pread, nerr, Val_fd(fds[n].fd));
+      Store_field(_perr, nerr, Val_fd(fds[n].fd));
       nerr++;
     }
   }

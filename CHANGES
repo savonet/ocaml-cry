@@ -2,6 +2,7 @@
 =====
 * Raise a proper error when non-blocking connection
   fails.
+* Fix poll segfault.
 
 1.0.2 (2024-01-08)
 ======
