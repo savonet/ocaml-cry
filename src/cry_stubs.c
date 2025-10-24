@@ -30,7 +30,7 @@
 
 CAMLprim value caml_cry_poll(value _read, value _write, value _err,
                              value _timeout) {
-  CAMLparam3(_read, _write, _err);
+  CAMLparam4(_read, _write, _err, _timeout);
   CAMLlocal4(_pread, _pwrite, _perr, _ret);
 
   struct pollfd *fds;
